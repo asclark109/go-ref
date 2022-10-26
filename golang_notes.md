@@ -1,4 +1,75 @@
--
+- [Go (Golang)](#go--golang-)
+    + [Why new language?](#why-new-language-)
+    + [Installation](#installation)
+    + [Basics (Hello World, running binaries)](#basics--hello-world--running-binaries-)
+    + [Values](#values)
+    + [Variables](#variables)
+    + [Constants](#constants)
+    + [Getting input from user](#getting-input-from-user)
+    + [Iteration statement (`for` loops)](#iteration-statement---for--loops-)
+    + [Branching Statement (If/Else)](#branching-statement--if-else-)
+    + [Branching Statement (Switch)](#branching-statement--switch-)
+    + [Data Structures (Arrays)](#data-structures--arrays-)
+    + [Data Structures (Slices)](#data-structures--slices-)
+      - [Slice internals](#slice-internals)
+    + [Data Structures (Maps)](#data-structures--maps-)
+    + [Range](#range)
+    + [Functions](#functions)
+    + [Functions (multiple return values)](#functions--multiple-return-values-)
+    + [Variadic Functions](#variadic-functions)
+    + [Functions (closures)](#functions--closures-)
+    + [Functions (recursion)](#functions--recursion-)
+    + [Pointers](#pointers)
+    + [Strings and Runes](#strings-and-runes)
+    + [Structs](#structs)
+    + [Methods (functions for structs)](#methods--functions-for-structs-)
+    + [Interfaces](#interfaces)
+    + [Struct Embedding (Inheritance?)](#struct-embedding--inheritance--)
+    + [Generics](#generics)
+    + [Errors](#errors)
+    + [String Functions](#string-functions)
+    + [String Formatting](#string-formatting)
+    + [EXAMPLE PROGRAM](#example-program)
+  * [Synchronization](#synchronization)
+    + [Single-File Line Pattern (Synchronization)](#single-file-line-pattern--synchronization-)
+  * [Static Task Decomposition](#static-task-decomposition)
+  * [Parallelism in GoLang](#parallelism-in-golang)
+- [Module 1](#module-1)
+  * [Concurrency vs Parallelism](#concurrency-vs-parallelism)
+  * [Module 2](#module-2)
+    + [Synchronization using `atomics`](#synchronization-using--atomics-)
+    + [Issues with Atomic operations](#issues-with-atomic-operations)
+- [Module 3](#module-3)
+  * [Admdahl's Law](#admdahl-s-law)
+  * [Locks](#locks)
+  * [Formal Properties in asynchronous computation](#formal-properties-in-asynchronous-computation)
+  * [Formal Properties of a good Critical Section](#formal-properties-of-a-good-critical-section)
+    + [`LockOne` 2-thread lock algorithm (not good)](#-lockone--2-thread-lock-algorithm--not-good-)
+    + [`LockTwo` 2-thread lock algorithm (not good)](#-locktwo--2-thread-lock-algorithm--not-good-)
+    + [`PetersonLock` 2-thread lock algorithm (good)](#-petersonlock--2-thread-lock-algorithm--good-)
+    + [LiveLock](#livelock)
+    + [Fairness](#fairness)
+    + [Bakery Algorithm `BakeryLock` n-thread lock algorithm; `O(n)` space](#bakery-algorithm--bakerylock--n-thread-lock-algorithm---o-n---space)
+    + [Spin Locks, Contention](#spin-locks--contention)
+    + [Practical Lock Implementation](#practical-lock-implementation)
+    + [Test-And-Set Locks (`TASLock`) n-thread lock algorithm; O(1) space](#test-and-set-locks---taslock---n-thread-lock-algorithm--o-1--space)
+    + [Test-And-Test-And-Set Lock (`TTASLock`) n-thread lock algorithm; O(1) space](#test-and-test-and-set-lock---ttaslock---n-thread-lock-algorithm--o-1--space)
+    + [Exponential Backoff Lock (`EBLock`) n-thread lock algorithm; O(1) space](#exponential-backoff-lock---eblock---n-thread-lock-algorithm--o-1--space)
+    + [Queue Locks (`ALock`, `AndersonLock`) n-thread lock algorithm; O(N) space](#queue-locks---alock----andersonlock---n-thread-lock-algorithm--o-n--space)
+    + [LL Locks (`CLHLock`) n-thread lock algorithm; O(L+N) space](#ll-locks---clhlock---n-thread-lock-algorithm--o-l-n--space)
+    + [LL Locks (`MCSLock`) n-thread lock algorithm; O(L+N) space](#ll-locks---mcslock---n-thread-lock-algorithm--o-l-n--space)
+- [Module 4](#module-4)
+  * [Concurrent Data Structures](#concurrent-data-structures)
+    + [Non-blocking Algorithms](#non-blocking-algorithms)
+  * [Coarse-grained synchronization](#coarse-grained-synchronization)
+  * [Linked-List (concurrent)](#linked-list--concurrent-)
+    + [Linked-List (coarse-grained)](#linked-list--coarse-grained-)
+  * [Fine-grained synchronization](#fine-grained-synchronization)
+    + [Linked-List (fine-grained)](#linked-list--fine-grained-)
+  * [Optimistic synchronization](#optimistic-synchronization)
+
+<small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
+
 
 # Go (Golang)
 https://www.youtube.com/watch?v=X4q1OM0voO0&list=PLRAV69dS1uWSR89FRQGZ6q9BR2b44Tr9N&index=1
@@ -1617,7 +1688,7 @@ func MapKeys[K comparable, V any](m map[K]V) []K { // returns slice of keys in m
   return r
 }
 
-// As an example of a generic type, List is a singly-linked list with values of any type.
+// As an example of a generic type, List is a singly-linked-list with values of any type.
 type List[T any] struct {
   head, tail *element[T]
 }
@@ -1658,7 +1729,7 @@ func main() {
   // … though could also specify them explicitly.
   _ = MapKeys[int, string](m) // returns slice of keys; not used though
 
-  lst := List[int]{} // empty linked list
+  lst := List[int]{} // empty linked-list
   lst.Push(10)
   lst.Push(13)
   lst.Push(23)
@@ -1924,7 +1995,123 @@ func main() {
 }
 ```
 
+## Synchronization
 
+__Race condition__ : non-deterministic behavior in a parallel program when the result of teh operation depends on the interleaving of certain individual operations
 
+- can run deterministically most of the time but fail other times
+- hard to reproduce and diagnose because they appear infrequently
+- sometimes only appear under heavy load or when using certain compilers, platforms, and architectures
 
+__Data Race condition__ : when at least two threads access a shared variable at the same time. One thread is trying to modify the variable (the other is reading/writing). I.e., at least one thread is trying to write to.
 
+- 2 processors/threads race to read/write or write/write
+- normally caused by not using proper synchronization techniques when accessing the shared variable
+- races can also happen with files and I/O (e.g. printing to screen)
+
+__Critical Section__ : block of code where potentially more than one thread can execute the code at the same time. This is potentially where shared resources are accessed/modified.
+
+- code in a critical section should be executed serially (be synchronized). Only one thread should be allowed to execute that code. I.e., one thread enters and finishes critical section, then another enters and leaves, etc.
+- eventually another thread should be able to access this section once one thread has completed the critical section
+
+_Synchronization_ is needed when dependencies exist between parallel tasks and/or to handle race conditions.
+
+Many low-level synchronization primitives (e.g. locks, monitors, etc) are built off of specialized hardware primitives/instructions (the __atomic operations__).
+
+__Atomic operation__ : operation that completes in a single step relative to other threads (in a shared memory system)
+
+Example
+```go
+// imagine this is the body of code run in parallel by multiple threads
+func transfer(flag *int64, transaction *Transaction) {
+
+	from := transaction.From
+	to := transaction.To
+	amount := transaction.amount
+
+  // problem: threads are reading and writing in below section.
+  // e.g. 
+  // balance == 100
+  // two threads read the balance is 100
+  // both threads deduct $1
+  // both threads write $99 to memory, when the true balance should be $98.
+  // this section needs to run serially (one thread at a time)
+	if from.balance >= amount {
+		from.balance -= amount
+		to.balance += amount
+	}
+
+}
+```
+
+### Single-File Line Pattern (Synchronization)
+
+Using the `sync/atomic` package, the threads in the previous section can be synchronized with a single-file line paradigm: force every thread to pass through a critical section of the code one thread at a time. Physically, threads will meet at a choke point in the code where one thread passes through the code at a time. The next thread only enters once the previous thread finishes through the critical section.
+
+```go
+func transfer(flag *int64, transaction *Transaction) {
+
+	from := transaction.From
+	to := transaction.To
+	amount := transaction.amount
+
+  // atomic.CompareAndSwapInt64(flag, 0, 1) will look at thing at memory location flag
+  // will compare it to 0, and if it is 0 will change it to 1 and return true.
+  // if thing located at flag is not 0, will return false (and keep looping).
+  // Consequence: many threads all hit this and walk through this code in single-file
+  // line. When the flag equals 1, it indicates the thread is in the following critical
+  // section.
+
+  // CRITICAL SECTION (ENTRANCE)
+	for !atomic.CompareAndSwapInt64(flag, 0, 1) {
+	}
+
+	if from.balance >= amount {
+		from.balance -= amount
+		to.balance += amount
+	}
+
+  // thread that's finished sets flag back to 0, and another thread comes through
+	atomic.StoreInt64(flag, 0)
+  // CRITICAL SECTION (EXIT)
+
+}
+```
+
+Here we use a `flag` variable to represent the address for our atomic operation. This `flag` argument can only hold two values `0` or `1`. We will use this argument to tell goroutines when they can enter into the critical section.
+
+Assume we have spawned off 4 goroutines and they all reach the `for` loop at the same time. The `CompareAndSwapInt32` is an atomic operation that atomically looks at the memory address given (i.e., `&flag`) and checks if the value is equal to the second argument (i.e., `0`). If the value is equal to the second argument then it will update value to be equal to the third argument (i.e., `1`) and return `true`; otherwise, if it returns `false`. Thus, only one goroutine will succeed in updating the flag to be `1` since they are all performing the atomic operation sequentially; therefore, those who fail (i.e., when `CompareAndSwapInt32` returns `false`) will loop until it’s there turn to set the flag to `1`. The goroutine that was successful in updating the `flag` to `1` now enters into the critical section and can safely update any shared variable without using atomic operations because it’s the only one in the critical section. Before the thread leaves the critical section, it needs to tell all waiting goroutines that one of them can now enter into the critical section. The exiting goroutine can use the `StoreInt32` operation to reset the `flag` back to zero to allow another goroutine into the critical section. Thus, `0` means no goroutine is in the critical section and `1` means that a goroutine is in the critical section and all others must wait.
+
+__NOTE__ : use _atomic operations_ sparingly because:
+
+- they require siginificantly more clock cycles than other mechanisms
+- they cause a __memory fence__ , which forces the write-back buffer to be sent to main memory. This process can stall the other processes from reading/writing to main memory
+- they prevent out-of-order execution and other compiler optimizations
+
+## Static Task Decomposition
+
+One technique for distributing work is static task decomposition.
+
+__static task decomposition__ : divide the total work as evenly as possible among the threads to be spawned. work_for_thread = total_work / num_threads (integer division). Often, the extra work is assigned to the last thread. 
+
+```go
+threads = 4
+workTotal = 26
+workAmount = workTotal / threads // 26/4 == 6 (integer division)
+```
+
+## Parallelism in GoLang
+
+The following construct works well
+
+```go
+type WorkerContext struct {
+   // Define your shared variables
+}
+
+func worker(ctx *WorkerContext, work **SOME TYPE**) {
+
+}
+```
+
+All workers (i.e., goroutines) will be spawned from the main function to be assigned the `worker` function. The `ctx` argument is the shared context that holds all the shared variables (e.g., `sync.WaitGroup`, atomic flags, etc.) to all the goroutines that need access to them. Specifically, for a static work distribution, the work argument will tell the worker what work they are assigned. This could also be done with more than just a single argument. For example, in the crawler program, worker 1 is assigned pages A-F and only should be performing the necessary computations on those distinct pages. At the end of its computation, it will communicate its results via a shared variable. You will need to think about how to accomplish this part.
