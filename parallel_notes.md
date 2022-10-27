@@ -54,8 +54,8 @@
 - [Module 4](#module-4)
   * [Concurrent Data Structures](#concurrent-data-structures)
     + [Non-blocking Algorithms](#non-blocking-algorithms)
-  * [Coarse-grained synchronization](#coarse-grained-synchronization)
   * [Linked-List (concurrent)](#linked-list--concurrent-)
+  * [Coarse-grained synchronization](#coarse-grained-synchronization)
     + [Linked-List (coarse-grained)](#linked-list--coarse-grained-)
   * [Fine-grained synchronization](#fine-grained-synchronization)
     + [Linked-List (fine-grained)](#linked-list--fine-grained-)
@@ -66,6 +66,38 @@
   * [Semaphore](#semaphore)
     + [in go](#in-go-1)
     + [in java](#in-java-1)
+- [Module 4 (continued...)](#module-4--continued-)
+  * [Lazy synchronization](#lazy-synchronization)
+    + [Traffic Jam](#traffic-jam)
+  * [Nonblocking Synchronization (Lock-free)](#nonblocking-synchronization--lock-free-)
+- [Module 5](#module-5)
+  * [Pool data structure](#pool-data-structure)
+    + [Queues & Stacks](#queues---stacks)
+    + [Bounded vs Unbounded implementation](#bounded-vs-unbounded-implementation)
+    + [Blocking vs Non-Blocking](#blocking-vs-non-blocking)
+    + [Queue: Concurrency](#queue--concurrency)
+    + [Queue: concurrent blocking implementation](#queue--concurrent-blocking-implementation)
+      - [Enqueue](#enqueue)
+      - [Dequeue](#dequeue)
+    + [implementation of bounded queue](#implementation-of-bounded-queue)
+    + [Queue: concurrent unbounded queue](#queue--concurrent-unbounded-queue)
+    + [Queue: concurrent lock-free queue (non-blocking)](#queue--concurrent-lock-free-queue--non-blocking-)
+    + [implementation of unbounded lock-free queue (non-blocking)](#implementation-of-unbounded-lock-free-queue--non-blocking-)
+    + [enqueue](#enqueue)
+    + [dequeue](#dequeue)
+  * [Concurrent Stack (lock-free)](#concurrent-stack--lock-free-)
+    + [implementation](#implementation)
+      - [push()](#push--)
+      - [pop()](#pop--)
+  * [Concurrent Hash Table](#concurrent-hash-table)
+    + [Closed-address hash set (java)](#closed-address-hash-set--java-)
+      - [Coarse-grained Hash Table (closed-address)](#coarse-grained-hash-table--closed-address-)
+      - [Fine-grained Hash Table (striped, closed-address)](#fine-grained-hash-table--striped--closed-address-)
+      - [Striped Hash Table (close-address)](#striped-hash-table--close-address-)
+    + [Refinable Hash Table](#refinable-hash-table)
+    + [Lock-free Hash Table (Recursive split-ordering)](#lock-free-hash-table--recursive-split-ordering-)
+    + [Concurrent Hash Table (open-address)](#concurrent-hash-table--open-address-)
+    + [Concurrent Hash Table (summary)](#concurrent-hash-table--summary-)
 
 <small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
 
@@ -2306,12 +2338,127 @@ public class LazyList<T> {
 
 ---
 
-### Nonblocking Synchronization (Lock-free)
+## Nonblocking Synchronization (Lock-free)
 
 A Lock-free data structure (i.e. with lock-free methods)
 * Guarantees minimal progress in any execution
   * i.e. Some thread will always complete a method call, even if others halt at malicious times
 * Implies that implementation can’t use locks
+
+
+---
+
+> An `AtomicMarkableReference<T>` object (defined by the `java.util.concurrent.atomic` package) encapsulates both a reference to an object of `type T` and a `Boolean mark`, also called a _mark_ bit. These fields can be updated atomically, either together or individually. The `compareAndSet()` method tests the expected reference and mark values, and if both tests succeed, replaces them with updated reference and mark values. The `get()` method has an unusual interface: It returns the object’s reference value and stores the mark value in a Boolean array argument. The `getReference()` and `isMarked()` methods return the reference and mark values, respectively. The interfaces of these methods are shown below. In C or C++, one could provide this functionality efficiently by “stealing” a bit from a pointer, using bit-wise operators to extract the mark and the pointer from a single word. In Java, one cannot manipulate pointers directly, so this functionality must be provided by a library.
+
+```java
+public boolean compareAndSet(
+  T expectedReference,
+  T newReference,
+  boolean expectedMark,
+  boolean newMark);
+
+public T get(boolean[] marked);
+public T getReference();
+public boolean isMarked();
+```
+
+> Some `AtomicMarkableReference<T>` methods: `compareAndSet()` tests and updates both the
+mark and reference fields; `get()` returns the encapsulated reference and stores the mark at
+position 0 in the argument array; `getReference()` and `isMarked()` return the reference and
+mark, respectively
+
+![alt text](pics/lockfreelist1.JPG "Title")
+
+```java
+// The LockFreeList class: nested Window class and find() method: find() returns a Window
+// object with nodes on either side of the key; it removes marked nodes that it encounters
+class Window {
+  
+  public Node pred, curr;
+  
+  Window(Node myPred, Node myCurr) {
+    pred = myPred; curr = myCurr;
+  }
+}
+
+Window find(Node head, int key) {
+  Node pred = null, curr = null, succ = null;
+  boolean[] marked = {false};
+  boolean snip;
+  retry: while (true) {
+    pred = head;
+    curr = pred.next.getReference();
+    while (true) {
+      succ = curr.next.get(marked);
+      while (marked[0]) {
+        snip = pred.next.compareAndSet(curr, succ, false, false);
+        if (!snip) continue retry;
+        curr = succ;
+        succ = curr.next.get(marked);
+      }
+      if (curr.key >= key)
+        return new Window(pred, curr);
+      pred = curr;
+      curr = succ;
+    }
+  }
+}
+```
+
+
+```java
+
+public class LockFreeList<T> {
+
+  //...
+
+  public boolean add(T item) {
+    int key = item.hashCode();
+    while (true) {
+      Window window = find(head, key);
+      Node pred = window.pred, curr = window.curr;
+      if (curr.key == key) {
+        return false;
+      } else {
+        Node node = new Node(item);
+        node.next = new AtomicMarkableReference(curr, false);
+        if (pred.next.compareAndSet(curr, node, false, false)) {
+          return true;
+        }
+      }
+    }
+  }
+
+  public boolean remove(T item) {
+    int key = item.hashCode();
+    boolean snip;
+    while (true) {
+      Window window = find(head, key);
+      Node pred = window.pred, curr = window.curr;
+      if (curr.key != key) {
+        return false;
+      } else {
+        Node succ = curr.next.getReference();
+        snip = curr.next.compareAndSet(succ, succ, false, true);
+        if (!snip)
+          continue;
+        pred.next.compareAndSet(curr, succ, false, false);
+        return true;
+      }
+    }
+  }
+
+  public boolean contains(T item) {
+    int key = item.hashCode();
+    Node curr = head;
+    while (curr.key < key) {
+      curr = curr.next.getReference();
+    }
+    return (curr.key == key && !curr.next.isMarked())
+  }
+  
+}
+```
 
 ---
 
