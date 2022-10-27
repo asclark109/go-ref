@@ -1,3 +1,75 @@
+- [Module 1](#module-1)
+    + [Architectures Overview](#architectures-overview)
+    + [Basic Architecture (Von Neumann)](#basic-architecture--von-neumann-)
+    + [Computer Program Basics](#computer-program-basics)
+    + [Multi-Core Chips](#multi-core-chips)
+    + [Programming on Multi-cores](#programming-on-multi-cores)
+    + [Concurrency vs Parallelism](#concurrency-vs-parallelism)
+- [Module 2](#module-2)
+  * [General Parallel Computing Terminology](#general-parallel-computing-terminology)
+  * [Potential Benefits, Limits and Costs of Parallel Programming](#potential-benefits--limits-and-costs-of-parallel-programming)
+  * [Parallel Computer Memory Architecture](#parallel-computer-memory-architecture)
+  * [Shared Memory System](#shared-memory-system)
+    + [Uniform Memory Access (UMA) System](#uniform-memory-access--uma--system)
+    + [Symmetric Multiprocessing (SMP) System](#symmetric-multiprocessing--smp--system)
+    + [System Bus (for SMP architecture)](#system-bus--for-smp-architecture-)
+  * [Program Execution](#program-execution)
+    + [Process](#process)
+    + [Threads](#threads)
+    + [Processes and Processors](#processes-and-processors)
+    + [Simultaneous Multi-threading (SMT) / Hyperthreading](#simultaneous-multi-threading--smt----hyperthreading)
+    + [Logical / Hardware Processors](#logical---hardware-processors)
+    + [Structuring Parallel Programs](#structuring-parallel-programs)
+    + [Task Decomposition and Granularity](#task-decomposition-and-granularity)
+  * [Improving Data Access Performance](#improving-data-access-performance)
+    + [Processors and Memory](#processors-and-memory)
+    + [Cache](#cache)
+    + [Principle of Locality](#principle-of-locality)
+    + [Cache Levels](#cache-levels)
+    + [Cache Hit / Miss](#cache-hit---miss)
+    + [Cache Coherence](#cache-coherence)
+    + [Race Conditions](#race-conditions)
+    + [Synchronization using `atomics`](#synchronization-using--atomics-)
+    + [Issues with Atomic operations](#issues-with-atomic-operations)
+    + [Instruction Level Parallelism (ILP)](#instruction-level-parallelism--ilp-)
+- [Module 3](#module-3)
+  * [Admdahl's Law](#admdahl-s-law)
+  * [Locks](#locks)
+  * [Formal Properties in asynchronous computation](#formal-properties-in-asynchronous-computation)
+  * [Formal Properties of a good Critical Section](#formal-properties-of-a-good-critical-section)
+    + [`LockOne` 2-thread lock algorithm (not good)](#-lockone--2-thread-lock-algorithm--not-good-)
+    + [`LockTwo` 2-thread lock algorithm (not good)](#-locktwo--2-thread-lock-algorithm--not-good-)
+    + [`PetersonLock` 2-thread lock algorithm (good)](#-petersonlock--2-thread-lock-algorithm--good-)
+    + [LiveLock](#livelock)
+    + [Fairness](#fairness)
+    + [Bakery Algorithm `BakeryLock` n-thread lock algorithm; `O(n)` space](#bakery-algorithm--bakerylock--n-thread-lock-algorithm---o-n---space)
+    + [Spin Locks, Contention](#spin-locks--contention)
+    + [Practical Lock Implementation](#practical-lock-implementation)
+    + [Test-And-Set Locks (`TASLock`) n-thread lock algorithm; O(1) space](#test-and-set-locks---taslock---n-thread-lock-algorithm--o-1--space)
+    + [Test-And-Test-And-Set Lock (`TTASLock`) n-thread lock algorithm; O(1) space](#test-and-test-and-set-lock---ttaslock---n-thread-lock-algorithm--o-1--space)
+    + [Exponential Backoff Lock (`BackoffLock`) n-thread lock algorithm; O(1) space](#exponential-backoff-lock---backofflock---n-thread-lock-algorithm--o-1--space)
+    + [Queue Locks (`ALock`, `AndersonLock`) n-thread lock algorithm; O(N) space](#queue-locks---alock----andersonlock---n-thread-lock-algorithm--o-n--space)
+    + [LL Locks (`CLHLock`) n-thread lock algorithm; O(L+N) space](#ll-locks---clhlock---n-thread-lock-algorithm--o-l-n--space)
+    + [LL Locks (`MCSLock`) n-thread lock algorithm; O(L+N) space](#ll-locks---mcslock---n-thread-lock-algorithm--o-l-n--space)
+- [Module 4](#module-4)
+  * [Concurrent Data Structures](#concurrent-data-structures)
+    + [Non-blocking Algorithms](#non-blocking-algorithms)
+  * [Coarse-grained synchronization](#coarse-grained-synchronization)
+  * [Linked-List (concurrent)](#linked-list--concurrent-)
+    + [Linked-List (coarse-grained)](#linked-list--coarse-grained-)
+  * [Fine-grained synchronization](#fine-grained-synchronization)
+    + [Linked-List (fine-grained)](#linked-list--fine-grained-)
+  * [Optimistic synchronization](#optimistic-synchronization)
+  * [Condition Variables](#condition-variables)
+    + [in go](#in-go)
+    + [in java](#in-java)
+  * [Semaphore](#semaphore)
+    + [in go](#in-go-1)
+    + [in java](#in-java-1)
+
+<small><i><a href='http://ecotrust-canada.github.io/markdown-toc/'>Table of contents generated with markdown-toc</a></i></small>
+
+
 # Module 1
 
 ---
@@ -1327,21 +1399,8 @@ __Wait-free Algorithm__:
 A method is __lock-free__ if _some_ call always finishes in a finite number of steps\
 A method is __wait-free__ if _every_ call finishes in a finite number of steps
 
-## Coarse-grained synchronization
-
-__Coarse-grained synchronization__:
-* take a sequential implementation of a class
-* add a scalable `lock` field
-* ensure each method call acquires and releases the lock
-
 ---
 
-__<span style="color:blue">(+)</span> works when levels of concurrency are low__ \
-__<span style="color:red">(-)</span> when many threads try to access the object at the same time then the object becomes a sequential bottleneck__ \
-__<span style="color:blue">(+)</span> simple, correct, understandable__ \
-__<span style="color:red">(-)</span> works poorly with contention__
-
----
 
 
 ## Linked-List (concurrent)
@@ -1361,6 +1420,22 @@ private class Node {
   Node next;
 }
 ```
+
+---
+
+## Coarse-grained synchronization
+
+* take a sequential implementation of a class
+* add a scalable `lock` field
+* ensure each method call acquires and releases the lock
+
+__<span style="color:blue">(+)</span> works when levels of concurrency are low__ \
+__<span style="color:red">(-)</span> when many threads try to access the object at the same time then the object becomes a sequential bottleneck__ \
+__<span style="color:blue">(+)</span> simple, correct, understandable__ \
+__<span style="color:red">(-)</span> works poorly with contention__
+
+---
+
 
 ### Linked-List (coarse-grained)
 
@@ -1433,9 +1508,10 @@ public class CoarseList<T> {
 }
 ```
 
+---
+
 ## Fine-grained synchronization
 
-__Fine-grained synchronization__:
 * partition the object into independently synchronized components
 * allows method calls that access disjoint components to execute concurrently
   * methods will conflict when they access the same component at the same time
@@ -1448,15 +1524,11 @@ __Hand-over-hand locking__
 2. unlock `(-inf)`; lock `(b)`
 3. unlock `(a)`; lock `(c)`
 
----
-
 __<span style="color:blue">(+)</span> threads can traverse linked-list in parallel__ \
 __<span style="color:red">(-)</span> long chain of acquire/release of locks__ \
 __<span style="color:red">(-)</span> inefficient__
 
 ---
-
-
 
 ### Linked-List (fine-grained)
 
@@ -1552,6 +1624,8 @@ public class FineList<T> {
 - `Fig 9.9` shows how hand-over-hand solves the issue (locking 2 items)
 - `Fig 9.10` shows why it is important that method calls acquire the locks in the same order (left to right); deadlock can occur otherwise (`add(a)`, `remove(b)`)
 
+---
+
 ## Optimistic synchronization
 
 __Optimistic synchronization__:
@@ -1561,7 +1635,6 @@ __Optimistic synchronization__:
 1. find nodes without locking
 2. lock nodes
 3. check everything is okay
----
 
 __<span style="color:blue">(+)</span> limited-hotspots: `add()`, `remove()`, `contains()`. no contention on traversal__ \
 __<span style="color:blue">(+)</span> wait-free traversal__ \
@@ -1700,12 +1773,16 @@ public class OptimisticList<T> {
 
 ![alt text](pics/whyvalidation.JPG "Title")
 
+---
+
 ## Condition Variables
 
 __Condition Variable__: data object that allows a thread to suspend execution until a certain event or condition occurs
 * when the event or condition occurs another thread can signal to the sleeping thread to "wake up"
 * condition variable is _always_ associated with a mutex
   * __Monitor__: combined use of methods, mutual exclusion locks, and condition objects
+
+---
 
 ### in go
 
@@ -1800,6 +1877,8 @@ func main() {
 	fmt.Printf("Done.\n")
 }
 ```
+
+---
 
 ### in java
 
@@ -1918,6 +1997,8 @@ class LockedQueue<T> {
 }
 ```
 
+---
+
 ## Semaphore
 
 The semaphore is a generalization of the mutual exclusion lock.\
@@ -1933,6 +2014,7 @@ __Binary Semaphore__: acts like a mutex; has capacity of 1
 
 __Counting Semaphore__: capacity == number of available resources
 
+---
 
 ### in go
 
@@ -2002,6 +2084,8 @@ func (s *Semaphore) Down() {
 
 ```
 
+---
+
 ### in java
 
 This implementation keeps a `state int` and `capacity int` and manipulates the state variable. When thread wants to enter the CS, it calls `sema.acquire()`; the thread will go to sleep if `state` is at `capacity`.
@@ -2044,3 +2128,1204 @@ public class Semaphore {
 
 }
 ```
+
+---
+
+# Module 4 (continued...)
+
+---
+
+
+## Lazy synchronization
+
+An implementation where "hard-work" is delayed
+* e.g. removing a component split is split into two phases
+  * __Logical Removal__: set a bit tag to denote deletion
+  * __Physical Removal__: unlink it from the rest of the data structure
+  
+A major drawback of optimistic synchronization (for linked-lists) was that the `contains()` method required locking, which is unattractive because in practice many calls to the data structure will be `contains()` calls.
+
+With lazy synchronization:
+* `contains()` can become wait-free (guaranteed per thread progress)
+* `add()`, `remove()` will still be blocking methods, but they will traverse the list only once (in absence of contention)
+
+__<span style="color:blue">(+)</span>__ scan once (in absence of contention)
+__<span style="color:blue">(+)</span>__ no locking on `contains()` calls
+
+---
+
+each node has a `boolean marked` field indicating whether the node has been logically removed from the set
+* `node.marked == true` indicates the node is not in the set
+* `node.marked == false` indicates the node is in the set (and reachable)
+
+```java
+public class Node {
+  T item;
+  int key;
+  Node next;
+  Boolean marked;
+}
+```
+
+algorithm maintains the following invariant:
+* `every unmarked node is reachable`
+
+If a traversing thread does not find a node, or finds it marked, then that item is not in the set. Now, contains() needs only one wait-free traversal. That is, since node.marked == false indicates the node is in the set and its reachable, we don't have to confirm again from the head of the list that we can reach it. Thus it suffices to check that `pred` and `curr` are both unmarked and that `pred` points to `curr`.
+
+In `remove()` the algorithm makes sure to logically delete a node (flag it as marked) before physically removing it (updating `pred` to point to `node.next`) to maintain the invariant that all unmarked nodes are reachable.
+
+An item is in the set if and only if it is referred to by an unmarked reachable node.
+
+`add()`, `remove()` are not starvation-free because list traversals may be arbitrarily delayed by ongoing modifications.
+
+__<span style="color:blue">(+)</span>__ `contains()` does not lock (good because typically high % of contains() calls are made in application) \
+__<span style="color:blue">(+)</span>__ Uncontended calls don't re-traverse \
+__<span style="color:blue">(+)</span>__ delayed removal operations can be batched and performed lazily at a convenient time, reducing overall disruptivesness of physical modifications to the structure \
+__<span style="color:red">(-)</span>__ `add()`, `remove()` calls do re-traverse \
+__<span style="color:red">(-)</span>__ `add()`, `remove()` calls are blocking: if one thread is delayed, then others may also be delayed (i.e. traffic jam if one thread delays) \
+
+### Traffic Jam
+
+any concurrent data structure based on mutual exclusion has a weakness
+* If one thread enters critical section And "eats the big muffin"
+  * Cache miss, page fault, descheduled …
+* then everyone else using that lock is stuck!
+* Need to trust the scheduler….
+
+---
+
+
+```java
+
+public class LazyList<T> {
+
+  private Node head;
+  private Lock lock = new ReentrantLock(); // This lock is reentrant: A thread that is holding the lock can acquire it again without blocking
+
+  public LazyList() {
+    head = new Node(Integer.MIN_VALUE);
+    head.next = new Node(Integer.MAX_VALUE);
+  }
+
+
+  public boolean add(T item) {
+    int key = item.hashCode();
+
+    while (true) {      // continuously attempt add() operation
+
+      Node pred = head;
+      Node curr = pred.next;
+      while (curr.key < key) {          // scan without locking to find place to add item (curr.key >= key)
+        pred = curr; curr = curr.next;
+      }
+                                        // lock down region in linked-list where we want to add item
+      pred.lock();                      // lock pred
+      try {
+        curr.lock();                    // lock curr
+        try {
+
+          if (validate(pred, curr)) {   // CONFIRM pred still in LL and that pred points to curr
+
+            if (curr.key == key) {      // passed validation: case: item already in LL; return false
+              return false;
+            } else {                    // passed validation: case: item not in LL; insert Node and return true
+              Node node = new Node(item);
+              node.next = curr;
+              pred.next = node;
+              return true;
+            }
+          }                             // validation failed! restart (back to while true).
+        } finally {
+          curr.unlock();
+        }
+      } finally {
+        pred.unlock();
+      }
+    }
+  }
+  
+  public boolean remove(T item) {
+
+    int key = item.hashCode();
+
+    while (true) {
+
+      Node pred = head;
+      Node curr = head.next;
+      while (curr.key < key) {
+        pred = curr; curr = curr.next;
+      }
+
+      pred.lock();
+      try {
+        curr.lock();
+        try {
+
+          if (validate(pred, curr)) {
+            if (curr.key == key) {
+              curr.marked = true;     // mark logically deleted
+              pred.next = curr.next;  // mark physically deleted
+              return true;
+            } else {
+              return false;
+            }
+          }
+
+        } finally {
+          curr.unlock();
+        }
+
+      } finally {
+      pred.unlock();
+      }
+    }
+  }
+
+  public boolean contains(T item) {
+    int key = item.hashCode();
+
+    Node curr = head;
+
+    while (curr.key < key)          // scan without locking to find where item should be (curr.key >= key)
+      pred = curr; curr = curr.next;
+
+    return curr.key == key && !curr.marked;
+
+  }
+
+  private boolean validate(Node pred, Node curr) {
+    return !pred.marked && !curr.marked && pred.next == curr; // confirm pred, curr unmarked and pred still points to curr
+  }
+  
+}
+```
+
+![alt text](pics/lazylock1.JPG "Title")
+
+![alt text](pics/lazylock2.JPG "Title")
+
+---
+
+### Nonblocking Synchronization (Lock-free)
+
+A Lock-free data structure (i.e. with lock-free methods)
+* Guarantees minimal progress in any execution
+  * i.e. Some thread will always complete a method call, even if others halt at malicious times
+* Implies that implementation can’t use locks
+
+---
+
+# Module 5
+
+---
+
+## Pool data structure
+
+similar to a `set` data structure
+* does not necessarily proved a contains() method
+* allows the same item to appear more than once
+* `get()` and `set()`
+
+```java
+public interface Pool<T> {
+  void put(T item);
+  T get();
+}
+```
+
+---
+
+### Queues & Stacks
+
+Quees and Stacks are both a pool of items
+
+```java
+public interface Pool<T> {
+  void put(T item);
+  T get();
+}
+```
+
+Queue
+* __`enq()`__, __`deq()`__ ("enqueue", "dequeue")
+* __First-in-first-out (FIFO) order__
+
+Stack
+* __`push()`__, __`pop()`__
+  * push is the set() method equivalent, pop is the get() method equivalent
+* __Last-in-first-out (LIFO) order__
+
+---
+
+### Bounded vs Unbounded implementation
+
+__Bounded implementation__
+* Fixed capacity
+* Good when resources an issue
+
+__Unbounded implementation__
+* holds any number of objects
+
+> i.e., we can have bounded implementations of queues, and we can have unbounded implementations of queues
+
+---
+
+### Blocking vs Non-Blocking
+
+blocking == locking; non-blocking == lock-free
+
+problem cases:
+* removing from empty pool
+* adding to full (bounded) pool
+
+__Blocking__:
+* caller waits until state changes
+
+__Non-blocking__:
+* Method throws an exception or error.
+
+---
+
+### Queue: Concurrency
+
+enq() and deq() work at different ends of the object; one implementation idea is to allow them to work at different ends.
+
+We insert items at the __tail__ of the queue\
+We removes items at the __head__ of the queue
+
+One problem area is: if the queue is empty or full, we might get threads competing to enqueue and dequeue at the same location
+
+---
+
+### Queue: concurrent blocking implementation
+
+have an `enqLock` and `deqLock`
+* at most one enqueuer/dequeuer at a time can manipulate the queue's fields
+* i.e. we have a lock at both ends
+
+Two locks
+* enqueuer does not lock out dequeuer
+* dequeuer does not lock out enqueuer
+
+Assocation
+* `enqLock` associated with `notFullCondition`
+  * dequeuer signals they removed item from queue so notFullCondition goes to true
+* `deqLock` associated with `notEmptyCondition`
+  * enqueuer signals they add item to queue so notEmptyCondition goes to true
+
+#### Enqueue
+
+1. acquires `enqLock`
+2. reads the size field
+3. if full, enqueuer must wait until dequeuer makes room
+4. enqueuer waits on notFullCondition field, releasing `enqLock` temporarily, and blocking until that condition is signaled.
+5. each time the thread awakens, it checks whether there is room, and if not, goes back to sleep
+6. else, inserts new item into tail
+7. releases `enqLock`
+8. If queue was empty, notify/signal waiting dequeuers that new item was added
+
+#### Dequeue
+
+1. acquires `deqLock`
+2. reads the size field
+3. if empty, dequeuer must wait until new item is enqueued
+4. dequeuer waits on notEmptyCondition field, releasing `deqLock` temporarily, and blocking until that condition is signaled.
+5. each time the thread awakens, it checks whether item was enqueued, and if not, goes back to sleep
+6. Assign the value of head's next node to "result" and reset head to head's next node
+7. releases `deqLock`
+8. If queue was full, notify/signal waiting enqueuers that a vacancy has appeared (empty spot)
+9. return "result"
+
+### implementation of bounded queue
+
+1. have a head and tail point to a sentinel node.
+2. when adding first item, move the tail to point to the newly added item.
+3. head will point to sentinel always, so head.next will point to the next item to be popped off
+
+To be able to dequeue something from the bounded queue, need to acquire the `deqLock` to lock out other dequeuers. There can only be one dequeuer operating.
+
+To be able to enqueue something from the bounded queue, need to acquire the `enqLock` to lock out other enqueuers. There can only be one enqueuer operating.
+
+keep a `size` to indicate how many items are in the bounded queue. this `size` will be incremeneted by `enq()` and will be decremented by `deq()`
+
+Example: enqeuer.
+1. acquires `enqLock`. don't need to lock the tail because we are the only enqueuer.
+2. see if they can add item (there is space)
+3. if it can add item, it will create a new node and update pointer of last item in queue to point to this new node we are enqueuing
+4. get and increment `size` field (need to be done with atomic fashion because the dequeuer might be reading this `size` field)
+5. release the lock...but we have to do something else
+6. notify any dequeuers that were looking to dequeue something but the queue was empty so they are asleep that they (one) should wake up. ACQUIRE the `deqLock` and do `Signal()` to wake up any one of the waiting dequeuers.
+
+what if we couldn't actually enqueue (the queue was full)?
+1. acquire the `enqLock`
+2. read `size`, see that `size == capacity == 8`, then go to sleep and wait until the queue is not full
+
+Example: dequeuer.
+1. acquires `deqLock`.
+2. verify `size != 0`
+3. read sentinel node's next field
+4. get the value (this is what we are going to return to the caller)
+5. need to update the pointers now. we are actually going to discard the sentinel node, and then use the sentinel node's next node that we just dequeued to be the new sentinel node. repoint the head to sentinel.next and change the data value of that node to be the sentinel node value (e.g. `-inf`)
+6. release the `deqLock`
+7. if there are any enqueuers waiting, we need to grab the `enqLock` and notify the enqueuers that there is now a vacant spot for them to enqueue. do `Signal()` to wake up any one of the waiting enqueuers.
+
+---
+
+In java
+```java
+protected class Node {
+  public T value;
+  public volatile Node next;
+
+  public Node(T x) {
+    value = x;
+    next = null;
+  }
+}
+```
+
+```java
+// assumes can't add null to queue
+public class BoundedQueue<T> {
+
+  ReentrantLock enqLock, deqLock;
+  Condition notEmptyCondition, notFullCondition;
+  AtomicInteger size;
+  volatile Node head, tail;
+  final int capacity;
+
+  public BoundedQueue(int _capacity) {
+    capacity = _capacity;
+    head = new Node(null); // queue uses a sentinel value
+    tail = head;
+    size = new AtomicInteger(0);
+    enqLock = new ReentrantLock();
+    notFullCondition = enqLock.newCondition();
+    deqLock = new ReentrantLock();
+    notEmptyCondition = deqLock.newCondition();
+  }
+
+  public void enq(T x) {
+
+    boolean mustWakeDequeuers = false;
+    Node e = new Node(x);
+
+    enqLock.lock();
+    try {
+      while (size.get() == capacity)
+        notFullCondition.await();
+      tail.next = e;
+      tail = e;
+      if (size.getAndIncrement() == 0)
+        mustWakeDequeuers = true;
+    } finally {
+      enqLock.unlock();
+    }
+
+    if (mustWakeDequeuers) {
+      deqLock.lock();
+      try {
+        notEmptyCondition.signalAll();
+      } finally {
+        deqLock.unlock();
+      }
+    }
+  }
+
+  public T deq() {
+
+    T result;
+    boolean mustWakeEnqueuers = false;
+    deqLock.lock();
+    
+    try {
+      while (head.next == null)
+        notEmptyCondition.await();
+      result = head.next.value;
+      head = head.next;
+      if (size.getAndDecrement() == capacity) {
+        mustWakeEnqueuers = true;
+      }
+    } finally {
+      deqLock.unlock();
+    }
+
+    if (mustWakeEnqueuers) {
+      enqLock.lock();
+      try {
+        notFullCondition.signalAll();
+      } finally {
+        enqLock.unlock();
+      }
+    }
+
+    return result;
+  }
+
+}
+```
+
+---
+
+### Queue: concurrent unbounded queue
+
+An unbounded total queue has the same implementation as a bounded queue, except there is no need to counter the number of items in the queue, or to provide conditions on which to wait.
+
+In java
+```java
+protected class Node {
+  public T value;
+  public volatile Node next;
+
+  public Node(T x) {
+    value = x;
+    next = null;
+  }
+}
+```
+
+```java
+// assumes can't add null to queue
+public class BoundedQueue<T> {
+
+  ReentrantLock enqLock, deqLock;
+  volatile Node head, tail;
+
+  public BoundedQueue(int _capacity) {
+    head = new Node(null); // queue uses a sentinel value
+    tail = head;
+    enqLock = new ReentrantLock();
+    deqLock = new ReentrantLock();
+  }
+
+  public void enq(T x) {
+    Node e = new Node(x);
+    enqLock.lock();
+    try {
+      tail.next = e;
+      tail = e;
+    } finally {
+      enqLock.unlock();
+    }
+  }
+
+  public T deq() throws EmptyException {
+
+    T result;
+    deqLock.lock();
+
+    try {
+      if (head.next == null) {
+        throw new EmptyException();
+      }
+      result = head.next.value;
+      head = head.next;
+    } finally {
+      deqLock.unlock();
+    }
+
+    return result;
+  }
+
+}
+```
+
+---
+
+
+### Queue: concurrent lock-free queue (non-blocking)
+
+Unbounded
+* No need to count the number of items
+
+Lock-free
+* (java) Use `AtomicReference<V>`
+  * an object reference that may be updated atomically
+* (java) `boolean compareAndSet(V expected, V update)`
+  * atomically sets the value to the given updated value if the current value == the expected value
+* (go) Use `compareAndSwapPointer()`
+
+Non-blocking
+* No need to provide conditions on which to wait
+
+### implementation of unbounded lock-free queue (non-blocking)
+
+`Node` struct that will have a `data` field. Need to define a constant to denote the node as the sentinel value. could be a null value for the field to denote sentinel
+
+will have `head` and `tail` pointer.
+* `tail` will always point to the item we most recently added to the queue
+* `head` will always point to the sentinel node
+
+enqueue lock-free
+1. create a new `node`
+2. need to perform 2 types of enqueue: a __logical enqueue__ and a __physical enqueue__
+* __logical enqueue__: update the next field of the last item in the queue to point to the new node we are enqueuing
+  * will use a compareAndSwap() on the node that tail points to (its next field) to update the pointer.
+* __physical enqueue__: update the tail pointer of the queue
+  * will perform a compareAndSwap() on the tail to update to the tail pointer so it now points to the new node we added
+
+### enqueue
+
+These two steps are not atomic (logical, physical enqueue)
+* not atomic meaning they happen at two distinct steps
+
+when we perform a compareAndSwap() on the tail (physical enqueue), the tail can either be pointing to
+* actual last Node (the last node we were just looking at). good
+* penultimate node (an intermediate node on a thread that has come about and added a new node)
+  * i.e. if multiple nodes are trying to insert items, only one will succeed
+  * so the tail could be pointing to some intermediate value of one of those threads succeeding to update the tail
+
+So, how can you fix this?
+
+during logical enqueue, when CASs fail
+* abandon hope, and restart
+* still lock-free. (why?)
+
+during physical enqueue, when CASs fail
+* can ignore (why?)
+
+### dequeue
+
+sentinel node points to the `head`. 
+
+1. read the value (`head.next`)
+2. make this node the new sentinel node
+3. need to update the head: perform a compareAndSwap on the head*
+4. make first node new sentinel
+
+if the compareAndSwap fails (returns false), it means you were not successful at removing the head of the queue so you need to try again.
+
+It is common with lock-free versions of concurrent data structures that you need to retry if you fail
+
+> advice: use `compareAndSwapPointer()` from `sync.atomic`
+
+---
+
+in java
+```java
+public class Node {
+
+  public T value;
+  public AtomicReference<Node> next;
+
+  public Node(T value) {
+    this.value = value;
+    next = new AtomicReference<Node>(null);
+  }
+
+}
+```
+
+```java
+public class LockFreeQueue<T> {
+
+  AtomicReference<Node> head, tail;
+  
+  public LockFreeQueue() {
+    Node node = new Node(null);
+    head = new AtomicReference(node);
+    tail = new AtomicReference(node);
+  }
+
+  public void enq(T value) {
+
+    Node node = new Node(value);
+
+    while (true) {
+      Node last = tail.get();
+      Node next = last.next.get();
+      if (last == tail.get()) {
+        if (next == null) {
+          if (last.next.compareAndSet(next, node)) {
+            tail.compareAndSet(last, node);
+            return;
+          }
+        } else {
+          tail.compareAndSet(last, next);
+        }
+      }
+    }
+  }
+
+  public T deq() throws EmptyException {
+    while (true) {
+      Node first = head.get();
+      Node last = tail.get();
+      Node next = first.next.get();
+      if (first == head.get()) {
+        if (first == last) {
+          if (next == null) {
+            throw new EmptyException();
+          }
+          tail.compareAndSet(last, next);
+        } else {
+          T value = next.value;
+          if (head.compareAndSet(first, next))
+            return value;
+        }
+      }
+    }
+  }
+
+}
+```
+
+![alt text](pics/unboundedQ.JPG "Title")
+
+![alt text](pics/unboundedQ2.JPG "Title")
+
+see textbook 10.6 for discussion on memory reclamation and the ABA problem (C/C+):
+
+> queue implementations so far rely on the Java garbage collector to recycle nodes
+after they have been dequeued. What happens if we choose to do our own memory
+management? There are several reasons why we might want to do this. Languages
+such as C or C++ do not provide garbage collection. Even if garbage collection is
+available, it is often more efficient for a class to do its own memory management,
+particularly if it creates and releases many small objects. Finally, if the garbage collection process is not lock-free, we might want to supply our own lock-free memory reclamation. A natural way to recycle nodes in a lock-free manner is to have each thread maintain its own private (i.e., thread-local) free list of unused queue entries.
+
+---
+
+## Concurrent Stack (lock-free)
+
+* methods (based on the pool data structure)
+  * `push()`
+  * `pop()`
+* Last-in-first-out (LIFO) order
+* lock-free
+
+### implementation
+
+pointer talking to the top of the stack `top`. There is a sentinel node used
+
+#### push()
+
+to add something to the top of the stack, need to update the reference to the top of the stack so we need to update the pointer that points to the top of the stack:
+
+1. create new node
+2. have new node point to whatever is at the top of the stack
+3. update the top of the stack to point to the new node we've added
+
+will use an atomic `compareAndSet()` to update the top of the stack `top`. If successful the top of the stack will point to the new item.
+
+#### pop()
+
+need to update top to point to the next node on the top of the stack.
+
+1. execute a `compareAndSet()` to have the tail point to the next node in the stack. The node that was on the top of the stack will now be deleted from memory because there is no pointer to it.
+
+---
+
+in java
+```java
+public class Node {
+  
+  public T value;
+  public Node next;
+  
+  public Node(T value) {
+    value = value;
+    next = null;
+  }
+}
+```
+
+
+```java
+public class LockFreeStack<T> {
+  
+  AtomicReference<Node> top = new AtomicReference<Node>(null);
+  static final int MIN_DELAY = 8;    // performance sensitive to architecture / machine
+  static final int MAX_DELAY = 1024; // performance sensitive to architecture / machine
+  Backoff backoff = new Backoff(MIN_DELAY, MAX_DELAY);
+
+  // The LockFreeStack<T> class: In the push() method, threads alternate between
+  // trying to alter the top reference by calling tryPush(), and backing off using
+  // the Backoff class
+  protected boolean tryPush(Node node){
+    Node oldTop = top.get();
+    node.next = oldTop;
+    return(top.compareAndSet(oldTop, node));
+  }
+
+  public void push(T value) {
+    Node node = new Node(value);
+    while (true) {
+      if (tryPush(node)) {
+        return;
+      } else {
+        backoff.backoff();
+      }
+    }
+  }
+ 
+  protected Node tryPop() throws EmptyException {
+
+    Node oldTop = top.get();
+
+    if (oldTop == null) {
+      throw new EmptyException();
+    }
+
+    Node newTop = oldTop.next;
+    if (top.compareAndSet(oldTop, newTop)) {
+      return oldTop;
+    } else {
+      return null;
+    }
+  }
+
+  // The LockFreeStack<T> class: The pop() method alternates between
+  // trying to change the top field and backing off
+  public T pop() throws EmptyException {
+
+    while (true) {
+      Node returnNode = tryPop();
+      if (returnNode != null) {
+        return returnNode.value;
+      } else {
+        backoff.backoff();
+      }
+    }
+  }
+}
+```
+
+__<span style="color:blue">(+)</span>__ no locking \
+__<span style="color:red">(-)</span>__ without garbage collection, fear of ABA \
+__<span style="color:red">(-)</span>__ without backoff, huge contention at top of stack \
+__<span style="color:red">(-)</span>__ in any case, no parallelism
+
+are stacks inherently sequential?
+* reasons why: every pop() call fights for top item
+* reasons why not: think about it!
+---
+
+## Concurrent Hash Table
+
+---
+
+### Closed-address hash set (java)
+
+> Here the standard Java `List<T>` interface (from package `java.util`) is used.\
+A `List<T>` is an ordered collection of `T` objects, where `T` is a type. It
+specifies many methods, of which we use the following: `add(x)`, which appends
+`x` to the end of the list; `get(i)`, which returns (but does not remove) the item at
+position `i`; and `contains(x)`, which returns true if the list contains `x`.
+The `List` interface is implemented by many classes. Here, we use the `ArrayList`
+class for convenience.
+
+```java
+
+public abstract class BaseHashSet<T> {
+
+  protected volatile List<T>[] table;
+  protected AtomicInteger setSize;
+
+  public BaseHashSet(int capacity) {
+    setSize = new AtomicInteger(0);
+    table = (List<T>[]) new List[capacity];
+    for (int i = 0; i < capacity; i++) {
+      table[i] = new ArrayList<T>();
+    }
+  }
+  
+  public abstract void acquire(T x);
+  public abstract void release(T x);
+  public abstract void resize();
+  public abstract boolean policy();
+}
+```
+
+typical strategies for __resizing the hash table__ (for closed-addressing)
+1. resize the table when the average bucket size exceeds a fixed threshold.
+2. employs two fixed quantities, the `bucket threshold` and the `global threshold`; resize the table
+* if more than, say, a quarter of the buckets exceed the bucket threshold, or
+* if any single bucket exceeds the global threshold.
+
+```java
+  public boolean contains(T x) {
+    acquire(x);
+    try {
+      int myBucket = x.hashCode() % table.length;
+      return table[myBucket].contains(x);
+    } finally {
+      release(x);
+    }
+  }
+
+  public boolean add(T x) {
+    boolean result = false;
+    acquire(x);
+    try {
+      int myBucket = x.hashCode() % table.length;
+      if (! table[myBucket].contains(x)) {
+        table[myBucket].add(x);
+        result = true;
+        setSize.getAndIncrement();
+      }
+    } finally {
+      release(x);
+    }
+
+    if (policy())
+      resize();
+
+    return result;
+  }
+```
+
+#### Coarse-grained Hash Table (closed-address)
+
+```java
+public class CoarseHashSet<T> extends BaseHashSet<T>{
+  final Lock lock;
+
+  CoarseHashSet(int capacity) {
+    super(capacity);
+    lock = new ReentrantLock();
+  }
+
+  public final void acquire(T x) {
+    lock.lock();
+  }
+
+  public void release(T x) {
+    lock.unlock();
+  }
+
+  public boolean policy() {
+    return setSize.get() / table.length > 4;
+  }
+
+  public void resize() {
+    lock.lock();
+    try {
+      if (!policy()) {
+        return; // someone beat us to it
+      }
+      int newCapacity = 2 * table.length;
+      List<T>[] oldTable = table;
+      table = (List<T>[]) new List[newCapacity];
+      for (int i = 0; i < newCapacity; i++)
+        table[i] = new ArrayList<T>();
+      for (List<T> bucket : oldTable) {
+        for (T x : bucket) {
+          table[x.hashCode() % table.length].add(x);
+        }
+      }
+    } finally {
+      lock.unlock();
+    }
+  }
+
+}
+```
+
+__<span style="color:blue">(+)</span>__ simple, hard to mess up__ \
+__<span style="color:red">(-)</span>__ sequential bottleneck__ \
+
+---
+
+#### Fine-grained Hash Table (striped, closed-address)
+
+__NOTE: SEE LECTURE SLIDES; IMPLEMENTATION SEEMINGLY DIFFERENT FROM TEXTBOOK__
+
+Stop the world resizing: Resizing stops all concurrent operations
+* What about an incremental resize?
+* Must avoid locking the table
+* A lock-free table + incremental resizing (see textbook)?
+
+__Closed (Chained) Hashing__:
+__<span style="color:blue">(+)</span>__ With N buckets, M items, uniform h, retains good performance as table density (M/N) increases -> less resizing \
+__<span style="color:red">(-)</span>__ dynamic memory allocation \
+__<span style="color:red">(-)</span>__ bad cache behavior (no locality) \
+
+---
+
+#### Striped Hash Table (close-address)
+
+closed-address hash table with greater parallelism and less lock
+contention. Instead of using a single lock to synchronize the entire set, we split the
+set into independently synchronized pieces. We introduce a technique called 
+__lock striping__, which will be useful for other data structures as well.
+
+```java
+public class StripedHashSet<T> extends BaseHashSet<T>{
+
+  final ReentrantLock[] locks;
+
+  public StripedHashSet(int capacity) {
+    super(capacity);
+    locks = new Lock[capacity];
+    for (int j = 0; j < locks.length; j++) {
+      locks[j] = new ReentrantLock();
+    }
+  }
+
+  public final void acquire(T x) {
+    locks[x.hashCode() % locks.length].lock();
+  }
+  
+  public void release(T x) {
+    locks[x.hashCode() % locks.length].unlock();
+  }
+
+  public void resize() {
+    for (Lock lock : locks) {
+      lock.lock();
+    }
+    try {
+      if (!policy()) {
+        return; // someone beat us to it
+      }
+      int newCapacity = 2 * table.length;
+      List<T>[] oldTable = table;
+      table = (List<T>[]) new List[newCapacity];
+      for (int i = 0; i < newCapacity; i++)
+        table[i] = new ArrayList<T>();
+      for (List<T> bucket : oldTable) {
+        for (T x : bucket) {
+          table[x.hashCode() % table.length].add(x);
+        }
+      }
+    } finally {
+      for (Lock lock : locks) {
+        lock.unlock();
+      }
+    }
+  }
+}
+```
+
+![alt text](pics/strippedHashtable.JPG "Title")
+
+---
+
+### Refinable Hash Table 
+
+```java
+public class RefinableHashSet<T> extends BaseHashSet<T>{
+  AtomicMarkableReference<Thread> owner;
+  volatile ReentrantLock[] locks;
+  
+  public RefinableHashSet(int capacity) {
+    super(capacity);
+    locks = new ReentrantLock[capacity];
+    for (int i = 0; i < capacity; i++) {
+      locks[i] = new ReentrantLock();
+    }
+
+    owner = new AtomicMarkableReference<Thread>(null, false);
+  }
+
+  public void acquire(T x) {
+    boolean[] mark = {true};
+    Thread me = Thread.currentThread();
+    Thread who;
+    while (true) {
+      do {
+        who = owner.get(mark);
+      } while (mark[0] && who != me);
+      ReentrantLock[] oldLocks = locks;
+      ReentrantLock oldLock = oldLocks[x.hashCode() % oldLocks.length];
+      oldLock.lock();
+      who = owner.get(mark);
+      if ((!mark[0] || who == me) && locks == oldLocks) {
+        return;
+      } else {
+        oldLock.unlock();
+      }
+    }
+  }
+
+  public void release(T x) {
+    locks[x.hashCode() % locks.length].unlock();
+  }
+
+  public void resize() {
+    boolean[] mark = {false};
+    Thread me = Thread.currentThread();
+    if (owner.compareAndSet(null, me, false, true)) {
+      try {
+        if (!policy()) { // someone else resized first
+          return;
+        }
+        quiesce();
+        int newCapacity = 2 * table.length;
+        List<T>[] oldTable = table;
+        table = (List<T>[]) new List[newCapacity];
+        for (int i = 0; i < newCapacity; i++)
+          table[i] = new ArrayList<T>();
+        locks = new ReentrantLock[newCapacity];
+        for (int j = 0; j < locks.length; j++) {
+          locks[j] = new ReentrantLock();
+        }
+        initializeFrom(oldTable);
+      } finally {
+        owner.set(null, false);
+      }
+    }
+  }
+
+  protected void quiesce() {
+    for (ReentrantLock lock : locks) {
+      while (lock.isLocked()) {}
+    }
+  }
+  
+}
+```
+
+### Lock-free Hash Table (Recursive split-ordering)
+
+See textbook 13.3 for discussion
+
+![alt text](pics/recursivesplitorder.JPG "Title")
+![alt text](pics/recursivesplitorder2.JPG "Title")
+
+```java
+public class BucketList<T> implements Set<T> {
+  static final int HI_MASK = 0x80000000;
+  static final int MASK = 0x00FFFFFF;
+  Node head;
+  
+  public BucketList() {
+    head = new Node(0);
+    head.next =
+    new AtomicMarkableReference<Node>(new Node(Integer.MAX_VALUE), false);
+  }
+
+  public int makeOrdinaryKey(T x) {
+    int code = x.hashCode() & MASK; // take 3 lowest bytes
+    return reverse(code | HI_MASK);
+  }
+
+  private static int makeSentinelKey(int key) {
+    return reverse(key & MASK);
+  }
+   
+  public boolean contains(T x) {
+    int key = makeOrdinaryKey(x);
+    Window window = find(head, key);
+    Node curr = window.curr;
+    return (curr.key == key);
+  }
+
+  public BucketList<T> getSentinel(int index) {
+    int key = makeSentinelKey(index);
+    boolean splice;
+    while (true) {
+      Window window = find(head, key);
+      Node pred = window.pred;
+      Node curr = window.curr;
+      if (curr.key == key) {
+        return new BucketList<T>(curr);
+      } else {
+        Node node = new Node(key);
+        node.next.set(pred.next.getReference(), false);
+        splice = pred.next.compareAndSet(curr, node, false, false);
+        if (splice)
+          return new BucketList<T>(node);
+        else
+          continue;
+      }
+    }
+  }
+
+}
+```
+
+Lock-free Hash Table
+```java
+public class LockFreeHashSet<T> {
+  protected BucketList<T>[] bucket;
+  protected AtomicInteger bucketSize;
+  protected AtomicInteger setSize;
+
+  public LockFreeHashSet(int capacity) {
+    bucket = (BucketList<T>[]) new BucketList[capacity];
+    bucket[0] = new BucketList<T>();
+    bucketSize = new AtomicInteger(2);
+    setSize = new AtomicInteger(0);
+  }
+  
+  public boolean add(T x) {
+    int myBucket = BucketList.hashCode(x) % bucketSize.get();
+    BucketList<T> b = getBucketList(myBucket);
+    if (!b.add(x))
+      return false;
+    int setSizeNow = setSize.getAndIncrement();
+    int bucketSizeNow = bucketSize.get();
+    if (setSizeNow / bucketSizeNow > THRESHOLD)
+      bucketSize.compareAndSet(bucketSizeNow, 2 * bucketSizeNow);
+    return true;
+  }
+
+  private BucketList<T> getBucketList(int myBucket) {
+    if (bucket[myBucket] == null)
+      initializeBucket(myBucket);
+      return bucket[myBucket];
+  }
+
+  private void initializeBucket(int myBucket) {
+    int parent = getParent(myBucket);
+    if (bucket[parent] == null)
+      initializeBucket(parent);
+    BucketList<T> b = bucket[parent].getSentinel(myBucket);
+    if (b != null)
+      bucket[myBucket] = b;
+  }
+
+  private int getParent(int myBucket){
+    int parent = bucketSize.get();
+    do {
+      parent = parent >> 1;
+    } while (parent > myBucket);
+    parent = myBucket - parent;
+    return parent;
+  }
+}
+```
+
+![alt text](pics/hashtable3.JPG "Title")
+
+---
+
+### Concurrent Hash Table (open-address)
+
+* Keep all items in an array
+* One per bucket
+* If you have collisions, find an empty bucket and use it
+* Must know how to find items if they are outside their bucket
+
+`contains(x)` – search linearly from `h(x)` to `h(x) + H` recorded in bucket. \
+`add(x)` – put in first empty bucket, and update `H`.
+
+Using __linear probing__
+* expected items in bucket is same as in chaining
+* expected distance till open slot:
+  * E(D) = 1/2 (1 + (1 / (1 - M/N))^2)
+    * M/N = 0.5 -> search 2.5 buckets
+    * M/N = 0.9 -> search 50 buckets
+* __<span style="color:blue">(+)</span>__ good locality -> fewer cache misses \
+* __<span style="color:red">(-)</span>__ as M/N increases more cache misses \
+  * searching 10s of unrelated buckets
+  * "Clustering" of keys into neighboring buckets
+* __<span style="color:red">(-)</span>__ as computation proceeds, "contamination" by deleted items -> more cache misses \
+
+__Concurrent Open Address Hashing__
+* Need to either lock whole chain of displacements (see book) 
+* or have extra space to keep items as they are displaced step by step (Cuckoo hashing, see book). 
+
+1. see 13.21 cuckoo hashing 
+2. see 13.21 concurrent cuckoo hashing `PhasedCuckooHashSet<T>`
+3. see 13.4.3 striped concurrent cuckoo hash set `StripedCuckooHashSet<T> extends PhasedCuckooHashSet<T>`
+4. see 13.4.4 refinable concurrent cuckoo hash set `RefinableCuckooHashSet<T> extends PhasedCuckooHashSet<T>`
+
+---
+
+### Concurrent Hash Table (summary)
+
+* __Chained hash__ with __striped locking__ is simple and effective in many cases
+* See Textbook: Hopscotch (__Concurrent Cuckoo Hashing__) with striped locking for __great cache behavior__
+* See Textbook: __split-ordered__ if __incremental resizing needed__
