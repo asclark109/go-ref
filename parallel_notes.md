@@ -3476,3 +3476,1629 @@ __Concurrent Open Address Hashing__
 * __Chained hash__ with __striped locking__ is simple and effective in many cases
 * See Textbook: Hopscotch (__Concurrent Cuckoo Hashing__) with striped locking for __great cache behavior__
 * See Textbook: __split-ordered__ if __incremental resizing needed__
+
+---
+
+# Module 6
+
+---
+
+## Thread Scheduling, Concurrent Designs, & Patterns in Go
+
+---
+
+### Thread Scheduling
+
+There are several approaches to implementing threads in the OS,
+with varying degrees of functionality provided by the kernel and user
+space.
+* __User-space__: System memory allocated to running applications (system memory allocated for programs).
+* __Kernel-space__: System memory allocated to the kernel (i.e., the
+component that controls everything in the OS) and the
+operating system. (system memory allocated for the operating system)
+  * __User-level threads__
+    * Managed by a thread library or runtime system of the language
+(e.g., Golang)
+    * Typically the OS has no knowledge of these threads.
+  * __Kernel threads__
+    * Provided and managed by the OS
+    * Most OSes support threads at the kernel level.
+
+![alt text](pics/user_kernel_threads.JPG "Title")
+> User space on the left; within process there's some notion of threads; there is a runtime system controlling the threads; the thread table is information about the threads running within a process. Then, there is the kernel space (restricted space) of the OS that has information about all the processes running on the system. A process is a higher level construct. On the left, we see the notion of the user-level threads--the application (run-time system) controlling the spawning of threads; on the right, we see the notion of having the kernel be in charge of the threads being allocated within an application. In the kernel, there is the notion of the processes being on the OS and also the threads that have spawned within the processes. Diagram on the left: the run-time system controls the creation / deletion of threads, and the kernel has no idea about these user-level threads that have been created by a process. So on the left, we see how the run-time system of an actual language manages and hides the notion of threads from the kernel. On the right hand side, when we create kernel-level threads, the kernel has information about the threads being spawned within the application (and the processes that are being run in the application).
+
+### Pros / Cons: User-level threads vs kerne-level threads
+
+__User-level threads__: 
+* __<span style="color:blue">(+)</span>__ speed. Since the switching of threads can be done without a system call to the operating system (OS), thread creation is fast. The creation, deletion, switching of threads is managed by the runtime system, and that is done at a much faster speed than having to go within the kernel, which is much slower.
+* __<span style="color:red">(-)</span>__ if an OS only provides ueer-level threads, then:
+  * OS cannot map process threads to multiple CPUs (i.e. if the kernel only saw a process as a single unit, it would consider it only runnable on a single CPU core; if it doesn't know about the threads within a process, it wouldn't be able to run those threads on multiple CPUs, and we wouldn't be able to get parallelism)
+  * OS cannot suspend a process if a user-level thread is performing an I/O operation
+
+__Kernel-level threads__: 
+* __<span style="color:blue">(+)</span>__ can schedule another thread if one blocks. If a thread created within a process is managed by the OS, and the thread blocks because it has to go get something from memory or has to perform some I/O operation, then that OS can suspend that thread while waiting for the response / data of that call from the blocking thread, so it can deschedule the thread waiting on a resource to go run another thread.
+* __<span style="color:red">(-)</span>__ slow. If a user wants to spawn threads within an applicaiton, it has to make a request to the kernel to spawn a new thread, and that can be a slow process. It's not necessarily slow on e.g. Linux, but on other OS's it can be a slow functionality, so you want to ensure you're not doing a lot of creation / deletion of kernel threads. The kernel does creation, scheduling, context-switching, etc, which are all expensive operations, and so to have many kernel-level threads would be expensive.
+
+### Multithreading models
+
+It would be nice to combine the notions of user-level threads and kernel-level threads.
+
+a thread library must map user threads to kernel threads in order to run code on the logical cores. There are different mappings that exist that an operating system (OS) can support, each with its own tradeoffs:
+
+- __Many-to-One (N:1)__: many user threads map to one kernel thread
+- __One-to-One (1:1)__: one user thread maps to one kernel thread
+- __Many-to-Many (N:M)__: many user threads map to many kernel threads
+
+An OS can implement any of these three models to manage the threads created within an application. 
+
+---
+
+#### Many-to-One (N:1)
+
+* also called __user-level threading__
+* all user-level threads of a user process are mapped to one kernel thread of the OS. The creation, switching, deletion, etc. of threads are all done in the runtime system of the programming language
+* kernel sees a single process (it has no knowledge of the additional threads--it just sees a process that it should schedule on a CPU)
+* thread library scheduler maps determines which user-level thread will be executing for the process (only one thread at a time)
+* OS is in charge of mapping a process to a CPU
+
+![alt text](pics/user-level-threading.JPG "Title")
+
+> Kernel processes managed by the OS. process gets mapped to a single kernel process, which gets mapped to a single processor. The library scheduler is in charge of specifying which user-level thread runs on the processor when that process gets scheduled.
+
+* __<span style="color:blue">(+)</span>__ creation, deletion, and context switching of threads is fast because it requires no system calls (i.e. communicating with the kernel, which is expensive)
+* __<span style="color:blue">(+)</span>__ portability. few system dependencies
+* __<span style="color:red">(-)</span>__ There is no parallel execution of threads. There is only a single kernel entity backing the N threads; therefore, this model cannot utitlize multiple processors.
+
+---
+
+#### One-to-One (1:1)
+
+* also called __kernel-level threading__
+* generates a kernel thread for each user-level thread
+* the scheduler of the OS selects which kernel threads are executed at any point in time
+* OS is in charge of mapping threads to CPU(s)
+* No need for a library scheduler since each user-level threads is assigned to exactly one kernel thread (still need a library to create and spawn these threads--but there won't be a runtime system scheduling and managing the switching of threads--it's all done at the kernel level; the library is basically only creating an interface for us to create threads at the kernel space)
+
+![alt text](pics/one-to-one.JPG "Title")
+> since there is one-to-one mapping, when one of the kernel-level threads is blocking (a.k.a one of our user-level threads is requiring a memory or I/O type of call that may take multiple cycles), now the kernel can deschedule that thread to run another thread while waiting for that resource to be given back to that thread.
+
+* __<span style="color:blue">(+)</span>__ allows for more concurrency. When one thread blocks, other threads can be scheduled.
+* __<span style="color:red">(-)</span>__ Depending on the OS, this model can be expensive when it comes to creation, deletion, or context switching of threads. e.g. when a user-level thread's time slice is over, switching out that thread for another thread is an expensive cost since it is happening at the kernel level. 
+* __<span style="color:red">(-)</span>__ All thread operations involve the kernel. All of these calls are expensive / slower.
+
+---
+
+#### Many-to-Many (N:M)
+
+`N` = user threads; `M` = kernel threads
+* also called __hybrid threading__
+* Two-level scheduling where the thread library scheduler assigns user-level threads to a given set of kernel threads (the runtime system within the user space that is managing user-level threads knows about the kernel threads; the OS is going to give the runtime system of the application the ability to handle/manage a set of kernel threads, and since the runtime system knows about the threads within an application, it can assign threads spawned within the application to specific kernel threads, which can then be run on various processors by letting the kernel scheduler to schedule those kernel threads onto processors)
+* At any point in time, a user thread can be mapped to a different kernel thread (no fixed mapping)
+* N is greater than M (there are more user-level threads spawned than there are kernel-level threads being created)
+* Correspondingly, a kernel thread can execute different user threads at any point in time
+* The Go runtime system uses this mapping to manage goroutines
+
+
+![alt text](pics/many-to-many.JPG "Title")
+> The runtime system chooses which user-threads are going to run at any given time on a given set of kernel threads. In the picture, process 1 has a set of 3 kernel-level threads. The kernel scheduler dictates which kernel threads are run on processors at any given time. E.g., the library schedule has been given a set of 3 kernel threads, but the kernel scheduler is only having 2 of those kernel threads running at this moment in time. So, the library scheduler controls which user-level threads to assign to its set of kernel threads, but the kernel scheduler dictates which kernel threads run at any moment.
+
+* __<span style="color:blue">(+)</span>__ flexible. The OS creates kernel threads for physical concurrency (enables the actual running of these threads on a physical core), and the applications create user threads for application concurrency (enables the switching of threads within an application)
+* __<span style="color:red">(-)</span>__ complex (to implement). Most systems use 1:1 mapping still. In linux, the switching of a kernel thread is quite quick (has nearly zero cost), so the implementation of many libraries use this 1:1 mapping. In other operating system, the operations are more expensive.
+
+---
+
+### Golang Runtime Schedule
+
+__Goroutines__ are not technically threads. They are based the concept of a
+* __coroutine__: a unit of execution even lighter in weight than a thread.
+  * they are like user-level threads, but have little to no user-space support for their scheduling and execution (in many other thread libraries, the library provides additional resources to help with the scheduling of threads--"e.g. this thread has high priority, has thread-local storage, has a thread ID"--which all provided to help with the scheduling of those threads; this is not the case in go; goroutines have no thread-local storage and have no id. There is no way for the programmer to help with the scheduling of the groutine--there are no additional resources the Go language provides to us that help us to schedule it. This makes it different from other thread libraries)
+  * _coroutines are scheduled cooperatively,_ requiring an explicit yield (from the runtime system or the programmer) to move to another coroutine (e.g. runtime schedule call, I/O call, etc). E.g. `runtime.gosched()` is an example of the explicit yield. In other thread libraries, threads are pre-emptively scheduled. When their time is up on a processor, they will immediately be context-switched out so the programmer does not have to explicitly write the yield. 
+  * _coroutines enable us to have differing programming paradigms_ and I/O models such as CSP. I.e., the fact that Go uses the notion of coroutines rather than threads allows for a different kind of parallel programming.
+
+#### Goroutines as Coroutines
+
+Having Goroutines be coroutines have a few benefits over using kernel threads (most other thread library systems, they use a 1:1 model. user-level threads directly map to kernel-level threads):
+* __<span style="color:blue">(+)</span>__ Memory consumption. Threads require `1MB` of memory vs `2Kb` memory to store stack information. Goroutine stack information can grow very easily if more memory is needed (e.g. more than `2Kb`)
+* __<span style="color:red">(-)</span>__ Switch cost. When a context switch occurs, (kernel) threads have to save a large amount of state information (general purpose registers, PC (program counter), SP (stack pointer), segment registers etc), whereas goroutines usually have to save just the program counter, stack pointer, and a few registers. The switching Goroutines is very fast--in fact likely even faster than at the user level because this is all happening at the user-level (in the user-space).
+
+#### Setup and Teardown Cost:
+
+* Threads need to request resources from the kernel (expensive)
+* Goroutines are created and destroyed by the runtime (cheap)
+![alt text](pics/goruntime.JPG "Title")
+> e.g. when you build a go program, what becomes part of your executible is a runtime system (in addition to your code). It is going to be the job of the runtime system to directly talk to the kernel when necessary.
+
+#### Scheduling of Goroutines:
+
+Goroutines are scheduled _cooperatively_. Goroutines yield the control periodically when they are idle or logically blocked in order to run other Goroutines concurrently. This switch is done at well defined points:
+* Channels send and receive operations (if those operations would block)
+* The `go` statement, although there is no guarantee that the new Goroutine will be scheduled immediately (this may invoke the Go runtime schedule to look at the groutines to decide which to run on processors)
+* blocking system calls like file and network operations
+* After being stopped for a garbage collection cycle (the goroutine schedule will go ahead and try to run some other goroutine on the processors)
+* when you invoke `runtime.gosched()` (the scheduler will try to schedule a different goroutine on the processor)
+
+Go uses three entities to explain the scheduler
+
+* __Processor (P)__
+* __Kernel Thread (M)__
+* __Goroutines (G)__
+
+For a Go application, the number of threads available for Goroutines to run is equal to the `GOMAXPROCS`
+
+* `func GOMAXPROCS(n int) int`: sets the maximum number of CPUs that can be executing simultaneously and returns the previous setting (this is how many Goroutines can be run in parallel at any point time during the execution of this application)
+* if `n < 1`, it does not change the current setting
+* defaults to the number of logical cores for the system (i.e. `func NumCPU() int` from the runtime system package). Can't get any more parallelism than there are logical cores on your machine.
+
+Golang uses an `M:N` scheduler, which means that `M` goroutines need to be scheduled on `N` kernel threads that run at most `GOMAXPROCS` number of processors (`N < GOMAXPROCS`)
+> i.e. say the application will make M goroutines, which will map to N kernel threads, which we limit to `GOMAXPROCS`)
+
+The following quote from a Medium post describes this well:
+>"Every `P` (processor) has a local Goroutine queue. There's also a global Goroutine queue, which contains runnable Goroutines. Each `M` should be assigned to a `P`. `P`'s may have no `M`'s if they are blocked or in a system call. At any time, there are at most `GOMAXPROCS` number of `P`'s, and only one `M` can run per `P`. More `M`'s can be created by the scheduler if required. "
+
+>e.g. your go program spawns 8 goroutines, which will go into some global queue. Within the global queue, there will be the notion of a processor (within the runtime system) and a certain number of processors, which will equal `GOMAXPROCS`. On a specific machine, say there are 12 logical processors and thus `GOMAXPROCS` is 12. Within this abstraction of the processor within the runtime system, there will be a local queue such that we are going to grab goroutines from the global queue and put them into the local queue. Within the processor, we will have the notion of `M`, an actual kernel thread. We will assign a goroutine to a kernel thread, which will then be executed on an actual physical processor. Within the processor abstraction, it may have multiple kernel threads given to it such that if it has say two threads in its local queue, if one of those threads is blocked, it will just go ahead and run a different kernel thread that has been assigned to that processor. So, there is only going to be one kernel thread running within a software processor abstraction, but if one of those currently running kernel threads for a processor is being blocked or has to wait for something, the processor can go ahead and run a different kernel thread.
+
+![alt text](pics/goroutinemodel.JPG "Title")
+> visual example of the runtime system. There is a global queue of goroutines. There are multiple processors (software processor abstraction). Each has its own local queue. Within each processor, we have M's (kernel threads). Only one kernel thread is running at any given time. The kernel thread _grabs_ a goroutine from its local queue to start running. In this case, P1 and P3 have 3 kernel threads associated with it; P2, 2 kernel threads associated with it. M in this case should always be less than `GOMAXPROCS`
+
+In each round of scheduling, the scheduler finds a runnable Goroutine and executes. If a processor's queue is empty, then it will try to steal Goroutines from another processor's local queue.
+
+![alt text](pics/goroutine_theft.JPG "Title")
+> e.g., if the global queue is empty, and P2 has no goroutines within local queue, but has the ability to run on a processor, P2 can steal a goroutine from the local queue of P1 and assign it to one of its kernel threads.
+---
+
+## Go's Concurrency Model
+The concurrency model of Go when it comes to sharing resources
+between goroutines is "Do not communicate by sharing memory;
+instead, share memory by communicating”.
+
+To do this, Go uses a powerful notion of channels:
+- A channel in Go provides a connection between two goroutines,
+allowing them to communicate.
+
+## Channel
+
+A channel is like a queue.
+* __Unbuffered channel__: has size 1. will store a single value.
+```go
+// Declaring and initializing.
+var c chan int
+c = make(chan int) // unbuffered channel
+// or
+c := make(chan int) // unbuffered channel
+```
+
+```go
+// _Channels_ are the pipes that connect concurrent
+// goroutines. You can send values into channels from one
+// goroutine and receive those values into another
+// goroutine.
+
+package main
+
+import "fmt"
+
+func main() {
+
+	// Create a new channel with `make(chan val-type)`.
+	// Channels are typed by the values they convey.
+	messages := make(chan string)
+
+	// _Send_ a value into a channel using the `channel <-`
+	// syntax. Here we send `"ping"`  to the `messages`
+	// channel we made above, from a new goroutine.
+	go func() { messages <- "ping" }()
+
+	// The `<-channel` syntax _receives_ a value from the
+	// channel. Here we'll receive the `"ping"` message
+	// we sent above and print it out.
+	msg := <-messages
+	fmt.Println(msg)
+}
+
+```
+
+`simple.go`
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func counterService(msg string, c chan string) {
+	for i := 0; ; i++ {
+		c <- fmt.Sprintf("%s %d", msg, i) // Expression to be sent can be any suitable value.
+		time.Sleep(time.Duration(rand.Intn(3)) * time.Second)
+	}
+}
+
+func main() {
+	c := make(chan string)
+	go counterService("Count", c)
+	for i := 0; i < 5; i++ {
+		fmt.Printf("You say: %q\n", <-c) // Receive expression is just a value.
+	}
+	fmt.Println("Done.")
+}
+```
+
+By default channels are _unbuffered_, meaning that they
+will only accept sends (`chan <-`) if there is a
+corresponding receive (`<- chan`) ready to receive the
+sent value. _Buffered channels_ accept a limited
+number of  values without a corresponding receiver for
+those values.
+
+* __unbuffered channel__: will only accept sends (`chan <-`) if there is a
+corresponding receive (`<- chan`) ready to receive the
+sent value
+  * whichever goroutine arrives first (sender, receiver), will block until the other shows. (unbuffered = no queue...so both goroutines must be ready for one goroutine to hand data off to the other)
+* __Buffered channels__: accept a limited number of values without a corresponding receiver for those values.
+  * a goroutine can send values into the channel, which will collect values like a queue, and they will continue on in execution. a receiving goroutine does not need to be present
+    * a goroutine will block when sending a value into the channel if it reaches its buffered capacity
+  * a goroutine can receive values from the channel, without a sending goroutine present, and they will continue on in execution.
+    * a goroutine will block when receiving a value from the channel if it is empty
+```go
+// By default channels are _unbuffered_, meaning that they
+// will only accept sends (`chan <-`) if there is a
+// corresponding receive (`<- chan`) ready to receive the
+// sent value. _Buffered channels_ accept a limited
+// number of  values without a corresponding receiver for
+// those values.
+
+package main
+
+import "fmt"
+
+func main() {
+
+	// Here we `make` a channel of strings buffering up to
+	// 2 values.
+	messages := make(chan string, 2)
+
+	// Because this channel is buffered, we can send these
+	// values into the channel without a corresponding
+	// concurrent receive.
+	messages <- "buffered"
+	messages <- "channel"
+
+	// Later we can receive these two values as usual.
+	fmt.Println(<-messages)
+	fmt.Println(<-messages)
+}
+```
+
+When using channels as function parameters, you can
+specify if a channel is meant to only send or receive
+values. This specificity increases the type-safety of
+the program.
+```go
+package main
+
+import "fmt"
+
+// This `ping` function only accepts a channel for sending
+// values. It would be a compile-time error to try to
+// receive on this channel.
+func ping(pings chan<- string, msg string) {
+	pings <- msg
+}
+
+// The `pong` function accepts one channel for receives
+// (`pings`) and a second for sends (`pongs`).
+func pong(pings <-chan string, pongs chan<- string) {
+	msg := <-pings
+	pongs <- msg
+}
+
+func main() {
+	pings := make(chan string, 1)
+	pongs := make(chan string, 1)
+	ping(pings, "passed message")
+	pong(pings, pongs)
+	fmt.Println(<-pongs)
+}
+
+```
+
+We can use channels to synchronize execution
+across goroutines. Here's an example of using a
+blocking receive to wait for a goroutine to finish.
+```go
+
+package main
+
+import "fmt"
+import "time"
+
+// This is the function we'll run in a goroutine. The
+// `done` channel will be used to notify another
+// goroutine that this function's work is done.
+func worker(done chan bool) {
+	fmt.Print("working...")
+	time.Sleep(time.Second)
+	fmt.Println("done")
+
+	// Send a value to notify that we're done.
+	done <- true
+}
+
+func main() {
+
+	// Start a worker goroutine, giving it the channel to
+	// notify on.
+	done := make(chan bool, 1)
+	go worker(done)
+
+	// Block until we receive a notification from the
+	// worker on the channel.
+	<-done
+}
+```
+
+_Closing_ a channel indicates that no more values
+will be sent on it. This can be useful to communicate
+completion to the channel's receivers.
+```go
+package main
+
+import "fmt"
+
+// In this example we'll use a `jobs` channel to
+// communicate work to be done from the `main()` goroutine
+// to a worker goroutine. When we have no more jobs for
+// the worker we'll `close` the `jobs` channel.
+func main() {
+    jobs := make(chan int, 5)
+    done := make(chan bool)
+
+    // Here's the worker goroutine. It repeatedly receives
+    // from `jobs` with `j, more := <-jobs`. In this
+    // special 2-value form of receive, the `more` value
+    // will be `false` if `jobs` has been `close`d and all
+    // values in the channel have already been received.
+    // We use this to notify on `done` when we've worked
+    // all our jobs.
+    go func() {
+        for {
+            j, more := <-jobs
+            if more {
+                fmt.Println("received job", j)
+            } else {
+                fmt.Println("received all jobs")
+                done <- true
+                return
+            }
+        }
+    }()
+
+    // This sends 3 jobs to the worker over the `jobs`
+    // channel, then closes it.
+    for j := 1; j <= 3; j++ {
+        jobs <- j
+        fmt.Println("sent job", j)
+    }
+    close(jobs)
+    fmt.Println("sent all jobs")
+
+    // We await the worker using the
+    // [synchronization](channel-synchronization) approach
+    // we saw earlier.
+    <-done
+}
+```
+
+---
+
+## Patterns: Generator
+
+function that returns a channel
+
+- As with other primitive types (integers, strings, etc.), `channels` (in go) are also first class values.
+- Generators allow us to have more instances of some service
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func counterService(msg string) <-chan string { // Returns receive-only channel of strings.
+	c := make(chan string)
+	go func() {
+		for i := 0; ; i++ {
+			c <- fmt.Sprintf("%s %d", msg, i) // Expression to be sent can be any suitable value.
+			time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+		}
+	}()
+	return c
+}
+
+func main() {
+	bob := counterService("Bob's Count")
+	sally := counterService("Sally's Count")
+	for i := 0; i < 5; i++ {
+		fmt.Printf("You say: %q\n", <-bob) // Receive expression is just a value.
+		fmt.Printf("You say: %q\n", <-sally)
+	}
+	fmt.Println("Done.")
+}
+```
+
+---
+
+## Patterns: Multiplexing
+
+These programs make Bob and Sally count in lockstep. We can
+instead use a __fan-in__ function to let whosoever is ready talk.
+
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func counterService(msg string) <-chan string { // Returns receive-only channel of strings.
+	c := make(chan string)
+	go func() {
+		for i := 0; ; i++ {
+			c <- fmt.Sprintf("%s %d", msg, i) // Expression to be sent can be any suitable value.
+			time.Sleep(time.Duration(rand.Intn(1e3)) * time.Millisecond)
+		}
+	}()
+	return c
+}
+
+func fanIn(input1, input2 <-chan string) <-chan string {
+	c := make(chan string)
+	go func() {
+		for {
+			c <- <-input1
+		}
+	}()
+	go func() {
+		for {
+			c <- <-input2
+		}
+	}()
+	return c
+}
+
+func main() {
+	c := fanIn(counterService("Bob"), counterService("Sally"))
+	for i := 0; i < 100; i++ {
+		fmt.Println(<-c)
+	}
+	fmt.Println("Done.")
+}
+
+```
+
+---
+
+## Patterns: Select
+
+lets you wait on multiple channel operations.
+
+It’s like a switch, but each case is a communication:
+- When a select statement is reached, all cases are evaluated.
+- The select blocks until one communication can proceed, which
+then performs the code inside its case block
+- If multiple channels receive a value then select chooses
+pseudo-randomly a case to execute.
+- A default clause, if present, executes immediately if no channel
+is ready.
+
+```go
+select {
+  case v1 := <-c1:
+    fmt.Printf("received %v from c1\n", v1)
+  case c3 <- 23:
+    fmt.Printf("sent %v to c3\n", 23)
+  default:
+    fmt.Printf("no one was ready to communicate\n")
+}
+```
+
+---
+
+## Signaling Completion/Timeout
+
+Timeouts and the closing of a channels are two ways to signal to a
+goroutine that a task has completed successfully or time has ran out:
+- Timeouts: m6/discussion/timeouts/timeouts.go
+```go
+// _Timeouts_ are important for programs that connect to
+// external resources or that otherwise need to bound
+// execution time. Implementing timeouts in Go is easy and
+// elegant thanks to channels and `select`.
+
+package main
+
+import "time"
+import "fmt"
+
+func main() {
+
+    // For our example, suppose we're executing an external
+    // call that returns its result on a channel `c1`
+    // after 2s.
+    c1 := make(chan string, 1)
+    go func() {
+        time.Sleep(2 * time.Second)
+        c1 <- "result 1"
+    }()
+
+    // Here's the `select` implementing a timeout.
+    // `res := <-c1` awaits the result and `<-Time.After`
+    // awaits a value to be sent after the timeout of
+    // 1s. Since `select` proceeds with the first
+    // receive that's ready, we'll take the timeout case
+    // if the operation takes more than the allowed 1s.
+    select {
+    case res := <-c1:
+        fmt.Println(res)
+    case <-time.After(1 * time.Second):
+        fmt.Println("timeout 1")
+    }
+
+    // If we allow a longer timeout of 3s, then the receive
+    // from `c2` will succeed and we'll print the result.
+    c2 := make(chan string, 1)
+    go func() {
+        time.Sleep(2 * time.Second)
+        c2 <- "result 2"
+    }()
+    select {
+    case res := <-c2:
+        fmt.Println(res)
+    case <-time.After(3 * time.Second):
+        fmt.Println("timeout 2")
+    }
+}
+```
+- Closing channels: m6/discussion/closing-channels
+```go
+// _Closing_ a channel indicates that no more values
+// will be sent on it. This can be useful to communicate
+// completion to the channel's receivers.
+
+package main
+
+import "fmt"
+
+// In this example we'll use a `jobs` channel to
+// communicate work to be done from the `main()` goroutine
+// to a worker goroutine. When we have no more jobs for
+// the worker we'll `close` the `jobs` channel.
+func main() {
+    jobs := make(chan int, 5)
+    done := make(chan bool)
+
+    // Here's the worker goroutine. It repeatedly receives
+    // from `jobs` with `j, more := <-jobs`. In this
+    // special 2-value form of receive, the `more` value
+    // will be `false` if `jobs` has been `close`d and all
+    // values in the channel have already been received.
+    // We use this to notify on `done` when we've worked
+    // all our jobs.
+    go func() {
+        for {
+            j, more := <-jobs
+            if more {
+                fmt.Println("received job", j)
+            } else {
+                fmt.Println("received all jobs")
+                done <- true
+                return
+            }
+        }
+    }()
+
+    // This sends 3 jobs to the worker over the `jobs`
+    // channel, then closes it.
+    for j := 1; j <= 3; j++ {
+        jobs <- j
+        fmt.Println("sent job", j)
+    }
+    close(jobs)
+    fmt.Println("sent all jobs")
+
+    // We await the worker using the
+    // [synchronization](channel-synchronization) approach
+    // we saw earlier.
+    <-done
+}
+```
+
+---
+
+## Confinement
+fig-confinement-ad-hoc
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	data := make([]int, 4)
+
+	loopData := func(handleData chan<- int) {
+		defer close(handleData)
+		for i := range data {
+			handleData <- data[i]
+		}
+	}
+
+	handleData := make(chan int)
+	go loopData(handleData)
+
+	for num := range handleData {
+		fmt.Println(num)
+	}
+}
+```
+
+fig-confinement-ownership
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+
+	chanOwner := func() <-chan int {
+		results := make(chan int, 5) // <1>
+		go func() {
+			defer close(results)
+			for i := 0; i <= 5; i++ {
+				results <- i
+			}
+		}()
+		return results
+	}
+
+	consumer := func(results <-chan int) { // <3>
+		for result := range results {
+			fmt.Printf("Received: %d\n", result)
+		}
+		fmt.Println("Done receiving!")
+	}
+
+	results := chanOwner() // <2>
+	consumer(results)
+}
+```
+
+fig-confinement-structs
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+
+	chanOwner := func() <-chan int {
+		results := make(chan int, 5) // <1>
+		go func() {
+			defer close(results)
+			for i := 0; i <= 5; i++ {
+				results <- i
+			}
+		}()
+		return results
+	}
+
+	consumer := func(results <-chan int) { // <3>
+		for result := range results {
+			fmt.Printf("Received: %d\n", result)
+		}
+		fmt.Println("Done receiving!")
+	}
+
+	results := chanOwner() // <2>
+	consumer(results)
+}
+```
+
+---
+
+## Error-handling
+fig-patterns-imporoper-err-handling
+```go
+package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	checkStatus := func(
+		done <-chan interface{},
+		urls ...string,
+	) <-chan *http.Response {
+		responses := make(chan *http.Response)
+		go func() {
+			defer close(responses)
+			for _, url := range urls {
+				resp, err := http.Get(url)
+				if err != nil {
+					fmt.Println(err) // <1>
+					continue
+				}
+				select {
+				case <-done:
+					return
+				case responses <- resp:
+				}
+			}
+		}()
+		return responses
+	}
+
+	done := make(chan interface{})
+	defer close(done)
+
+	urls := []string{"https://www.google.com", "https://badhost"}
+	for response := range checkStatus(done, urls...) {
+		fmt.Printf("Response: %v\n", response.Status)
+	}
+}
+
+```
+
+fig-patterns-proper-err-handling
+```go
+package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	type Result struct { // <1>
+		Error    error
+		Response *http.Response
+	}
+	checkStatus := func(done <-chan interface{}, urls ...string) <-chan Result { // <2>
+		results := make(chan Result)
+		go func() {
+			defer close(results)
+
+			for _, url := range urls {
+				var result Result
+				resp, err := http.Get(url)
+				result = Result{Error: err, Response: resp} // <3>
+				select {
+				case <-done:
+					return
+				case results <- result: // <4>
+				}
+			}
+		}()
+		return results
+	}
+
+	done := make(chan interface{})
+	defer close(done)
+
+	urls := []string{"https://www.google.com", "https://badhost"}
+	for result := range checkStatus(done, urls...) {
+		if result.Error != nil { // <5>
+			fmt.Printf("error: %v", result.Error)
+			continue
+		}
+		fmt.Printf("Response: %v\n", result.Response.Status)
+	}
+}
+
+```
+
+fig-stop-after-three-errors
+```go
+package main
+
+import (
+	"fmt"
+	"net/http"
+)
+
+func main() {
+	type Result struct { // <1>
+		Error    error
+		Response *http.Response
+	}
+	checkStatus := func(done <-chan interface{}, urls ...string) <-chan Result { // <2>
+		results := make(chan Result)
+		go func() {
+			defer close(results)
+
+			for _, url := range urls {
+				var result Result
+				resp, err := http.Get(url)
+				result = Result{Error: err, Response: resp} // <3>
+				select {
+				case <-done:
+					return
+				case results <- result: // <4>
+				}
+			}
+		}()
+		return results
+	}
+	done := make(chan interface{})
+	defer close(done)
+
+	errCount := 0
+	urls := []string{"a", "https://www.google.com", "b", "c", "d"}
+	for result := range checkStatus(done, urls...) {
+		if result.Error != nil {
+			fmt.Printf("error: %v\n", result.Error)
+			errCount++
+			if errCount >= 3 {
+				fmt.Println("Too many errors, breaking!")
+				break
+			}
+			continue
+		}
+		fmt.Printf("Response: %v\n", result.Response.Status)
+	}
+}
+
+```
+
+---
+
+## fan-out-fan-int
+fig-fan-out-naive-prime-finder
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"runtime"
+	"sync"
+	"time"
+)
+
+func main() {
+	repeatFn := func(
+		done <-chan interface{},
+		fn func() interface{},
+	) <-chan interface{} {
+		valueStream := make(chan interface{})
+		go func() {
+			defer close(valueStream)
+			for {
+				select {
+				case <-done:
+					return
+				case valueStream <- fn():
+				}
+			}
+		}()
+		return valueStream
+	}
+	take := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+		num int,
+	) <-chan interface{} {
+		takeStream := make(chan interface{})
+		go func() {
+			defer close(takeStream)
+			for i := 0; i < num; i++ {
+				select {
+				case <-done:
+					return
+				case takeStream <- (<-valueStream):
+				}
+			}
+		}()
+		return takeStream
+	}
+	toInt := func(done <-chan interface{}, valueStream <-chan interface{}) <-chan int {
+		intStream := make(chan int)
+		go func() {
+			defer close(intStream)
+			for v := range valueStream {
+				select {
+				case <-done:
+					return
+				case intStream <- v.(int):
+				}
+			}
+		}()
+		return intStream
+	}
+	primeFinder := func(done <-chan interface{}, intStream <-chan int) <-chan interface{} {
+		primeStream := make(chan interface{})
+		go func() {
+			defer close(primeStream)
+			for integer := range intStream {
+				integer -= 1
+				prime := true
+				for divisor := integer - 1; divisor > 1; divisor-- {
+					if integer%divisor == 0 {
+						prime = false
+						break
+					}
+				}
+
+				if prime {
+					select {
+					case <-done:
+						return
+					case primeStream <- integer:
+					}
+				}
+			}
+		}()
+		return primeStream
+	}
+	fanIn := func(
+		done <-chan interface{},
+		channels ...<-chan interface{},
+	) <-chan interface{} { // <1>
+		var wg sync.WaitGroup // <2>
+		multiplexedStream := make(chan interface{})
+
+		multiplex := func(c <-chan interface{}) { // <3>
+			defer wg.Done()
+			for i := range c {
+				select {
+				case <-done:
+					return
+				case multiplexedStream <- i:
+				}
+			}
+		}
+
+		// Select from all the channels
+		wg.Add(len(channels)) // <4>
+		for _, c := range channels {
+			go multiplex(c)
+		}
+
+		// Wait for all the reads to complete
+		go func() { // <5>
+			wg.Wait()
+			close(multiplexedStream)
+		}()
+
+		return multiplexedStream
+	}
+
+	done := make(chan interface{})
+	defer close(done)
+
+	start := time.Now()
+
+	rand := func() interface{} { return rand.Intn(50000000) }
+
+	randIntStream := toInt(done, repeatFn(done, rand))
+
+	numFinders := runtime.NumCPU()
+	fmt.Printf("Spinning up %d prime finders.\n", numFinders)
+	finders := make([]<-chan interface{}, numFinders)
+	fmt.Println("Primes:")
+	for i := 0; i < numFinders; i++ {
+		finders[i] = primeFinder(done, randIntStream)
+	}
+
+	for prime := range take(done, fanIn(done, finders...), 10) {
+		fmt.Printf("\t%d\n", prime)
+	}
+
+	fmt.Printf("Search took: %v", time.Since(start))
+}
+
+```
+
+fig-naive-prime-finder
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"time"
+)
+
+func main() {
+	repeatFn := func(
+		done <-chan interface{},
+		fn func() interface{},
+	) <-chan interface{} {
+		valueStream := make(chan interface{})
+		go func() {
+			defer close(valueStream)
+			for {
+				select {
+				case <-done:
+					return
+				case valueStream <- fn():
+				}
+			}
+		}()
+		return valueStream
+	}
+	take := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+		num int,
+	) <-chan interface{} {
+		takeStream := make(chan interface{})
+		go func() {
+			defer close(takeStream)
+			for i := 0; i < num; i++ {
+				select {
+				case <-done:
+					return
+				case takeStream <- <-valueStream:
+				}
+			}
+		}()
+		return takeStream
+	}
+	toInt := func(done <-chan interface{}, valueStream <-chan interface{}) <-chan int {
+		intStream := make(chan int)
+		go func() {
+			defer close(intStream)
+			for v := range valueStream {
+				select {
+				case <-done:
+					return
+				case intStream <- v.(int):
+				}
+			}
+		}()
+		return intStream
+	}
+	primeFinder := func(done <-chan interface{}, intStream <-chan int) <-chan interface{} {
+		primeStream := make(chan interface{})
+		go func() {
+			defer close(primeStream)
+			for integer := range intStream {
+				integer -= 1
+				prime := true
+				for divisor := integer - 1; divisor > 1; divisor-- {
+					if integer%divisor == 0 {
+						prime = false
+						break
+					}
+				}
+
+				if prime {
+					select {
+					case <-done:
+						return
+					case primeStream <- integer:
+					}
+				}
+			}
+		}()
+		return primeStream
+	}
+	rand := func() interface{} { return rand.Intn(50000000) }
+
+	done := make(chan interface{})
+	defer close(done)
+
+	start := time.Now()
+
+	randIntStream := toInt(done, repeatFn(done, rand))
+	fmt.Println("Primes:")
+	for prime := range take(done, primeFinder(done, randIntStream), 10) {
+		fmt.Printf("\t%d\n", prime)
+	}
+
+	fmt.Printf("Search took: %v", time.Since(start))
+}
+
+```
+
+---
+
+## pipelines
+fig-adding-additional-stage-to-pipeline
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	multiply := func(values []int, multiplier int) []int {
+		multipliedValues := make([]int, len(values))
+		for i, v := range values {
+			multipliedValues[i] = v * multiplier
+		}
+		return multipliedValues
+	}
+	add := func(values []int, additive int) []int {
+		addedValues := make([]int, len(values))
+		for i, v := range values {
+			addedValues[i] = v + additive
+		}
+		return addedValues
+	}
+	ints := []int{1, 2, 3, 4}
+	for _, v := range multiply(add(multiply(ints, 2), 1), 2) {
+		fmt.Println(v)
+	}
+}
+```
+
+fig-functional-pipeline-combination
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	multiply := func(values []int, multiplier int) []int {
+		multipliedValues := make([]int, len(values))
+		for i, v := range values {
+			multipliedValues[i] = v * multiplier
+		}
+		return multipliedValues
+	}
+	add := func(values []int, additive int) []int {
+		addedValues := make([]int, len(values))
+		for i, v := range values {
+			addedValues[i] = v + additive
+		}
+		return addedValues
+	}
+
+	ints := []int{1, 2, 3, 4}
+	for _, v := range add(multiply(ints, 2), 1) {
+		fmt.Println(v)
+	}
+}
+```
+
+fig-pipelines-func-stream-processing
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	multiply := func(value, multiplier int) int {
+		return value * multiplier
+	}
+
+	add := func(value, additive int) int {
+		return value + additive
+	}
+
+	ints := []int{1, 2, 3, 4}
+	for _, v := range ints {
+		fmt.Println(multiply(add(multiply(v, 2), 1), 2))
+	}
+}
+```
+
+### best-practices-for-constructing-pipelines
+fig-pipelines-chan-stream-processing
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	generator := func(done <-chan interface{}, integers ...int) <-chan int {
+		intStream := make(chan int)
+		go func() {
+			defer close(intStream)
+			for _, i := range integers {
+				select {
+				case <-done:
+					return
+				case intStream <- i:
+				}
+			}
+		}()
+		return intStream
+	}
+
+	multiply := func(
+		done <-chan interface{},
+		intStream <-chan int,
+		multiplier int,
+	) <-chan int {
+		multipliedStream := make(chan int)
+		go func() {
+			defer close(multipliedStream)
+			for i := range intStream {
+				select {
+				case <-done:
+					return
+				case multipliedStream <- i * multiplier:
+				}
+			}
+		}()
+		return multipliedStream
+	}
+
+	add := func(
+		done <-chan interface{},
+		intStream <-chan int,
+		additive int,
+	) <-chan int {
+		addedStream := make(chan int)
+		go func() {
+			defer close(addedStream)
+			for i := range intStream {
+				select {
+				case <-done:
+					return
+				case addedStream <- i + additive:
+				}
+			}
+		}()
+		return addedStream
+	}
+
+	done := make(chan interface{})
+	defer close(done)
+
+	intStream := generator(done, 1, 2, 3, 4)
+	pipeline := multiply(done, add(done, multiply(done, intStream, 2), 1), 2)
+
+	for v := range pipeline {
+		fmt.Println(v)
+	}
+}
+```
+
+### some handy generators
+fig-take-and-repeat-pipeline
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	repeat := func(
+		done <-chan interface{},
+		values ...interface{},
+	) <-chan interface{} {
+		valueStream := make(chan interface{})
+		go func() {
+			defer close(valueStream)
+			for {
+				for _, v := range values {
+					select {
+					case <-done:
+						return
+					case valueStream <- v:
+					}
+				}
+			}
+		}()
+		return valueStream
+	}
+	take := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+		num int,
+	) <-chan interface{} {
+		takeStream := make(chan interface{})
+		go func() {
+			defer close(takeStream)
+			for i := 0; i < num; i++ {
+				select {
+				case <-done:
+					return
+				case takeStream <- <-valueStream:
+				}
+			}
+		}()
+		return takeStream
+	}
+	done := make(chan interface{})
+	defer close(done)
+
+	for num := range take(done, repeat(done, 1), 10) {
+		fmt.Printf("%v ", num)
+	}
+}
+```
+
+fig-utilizing-string-stage
+```go
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	take := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+		num int,
+	) <-chan interface{} {
+		takeStream := make(chan interface{})
+		go func() {
+			defer close(takeStream)
+			for i := 0; i < num; i++ {
+				select {
+				case <-done:
+					return
+				case takeStream <- <-valueStream:
+				}
+			}
+		}()
+		return takeStream
+	}
+	repeat := func(
+		done <-chan interface{},
+		values ...interface{},
+	) <-chan interface{} {
+		valueStream := make(chan interface{})
+		go func() {
+			defer close(valueStream)
+			for {
+				for _, v := range values {
+					select {
+					case <-done:
+						return
+					case valueStream <- v:
+					}
+				}
+			}
+		}()
+		return valueStream
+	}
+	toString := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+	) <-chan string {
+		stringStream := make(chan string)
+		go func() {
+			defer close(stringStream)
+			for v := range valueStream {
+				select {
+				case <-done:
+					return
+				case stringStream <- v.(string):
+				}
+			}
+		}()
+		return stringStream
+	}
+	done := make(chan interface{})
+	defer close(done)
+
+	var message string
+	for token := range toString(done, take(done, repeat(done, "I", "am."), 5)) {
+		message += token
+	}
+
+	fmt.Printf("message: %s...", message)
+}
+```
+
+pipelines_test
+```go
+package pipelines
+
+import ()
+
+func BenchmarkGeneric(b *testing.B) {
+	repeat := func(
+		done <-chan interface{},
+		values ...interface{},
+	) <-chan interface{} {
+		valueStream := make(chan interface{})
+		go func() {
+			defer close(valueStream)
+			for {
+				for _, v := range values {
+					select {
+					case <-done:
+						return
+					case valueStream <- v:
+					}
+				}
+			}
+		}()
+		return valueStream
+	}
+	take := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+		num int,
+	) <-chan interface{} {
+		takeStream := make(chan interface{})
+		go func() {
+			defer close(takeStream)
+			for i := 0; i < num; i++ {
+				select {
+				case <-done:
+					return
+				case takeStream <- <-valueStream:
+				}
+			}
+		}()
+		return takeStream
+	}
+	toString := func(
+		done <-chan interface{},
+		valueStream <-chan interface{},
+	) <-chan string {
+		stringStream := make(chan string)
+		go func() {
+			defer close(stringStream)
+			for v := range valueStream {
+				select {
+				case <-done:
+					return
+				case stringStream <- v.(string):
+				}
+			}
+		}()
+		return stringStream
+	}
+	done := make(chan interface{})
+	defer close(done)
+
+	b.ResetTimer()
+	for range toString(done, take(done, repeat(done, "a"), b.N)) {
+	}
+}
+
+func BenchmarkTyped(b *testing.B) {
+	repeat := func(done <-chan interface{}, values ...string) <-chan string {
+		valueStream := make(chan string)
+		go func() {
+			defer close(valueStream)
+			for {
+				for _, v := range values {
+					select {
+					case <-done:
+						return
+					case valueStream <- v:
+					}
+				}
+			}
+		}()
+		return valueStream
+	}
+
+	take := func(
+		done <-chan interface{},
+		valueStream <-chan string,
+		num int,
+	) <-chan string {
+		takeStream := make(chan string)
+		go func() {
+			defer close(takeStream)
+			for i := num; i > 0 || i == -1; {
+				if i != -1 {
+					i--
+				}
+				select {
+				case <-done:
+					return
+				case takeStream <- <-valueStream:
+				}
+			}
+		}()
+		return takeStream
+	}
+
+	done := make(chan interface{})
+	defer close(done)
+
+	b.ResetTimer()
+	for range take(done, repeat(done, "a"), b.N) {
+	}
+}
+```
+---
+
+## preventing-goroutine-leaks
+fig-leak-from-blocked-channel-write
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+)
+
+func main() {
+	newRandStream := func() <-chan int {
+		randStream := make(chan int)
+		go func() {
+			defer fmt.Println("newRandStream closure exited.") // <1>
+			defer close(randStream)
+			for {
+				randStream <- rand.Int()
+			}
+		}()
+
+		return randStream
+	}
+
+	randStream := newRandStream()
+	fmt.Println("3 random ints:")
+	for i := 1; i <= 3; i++ {
+		fmt.Printf("%d: %d\n", i, <-randStream)
+	}
+}
+```
+
+fig-leak-from-blocked-channel-write-solved
+```go
+package main
+
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+)
+
+func main() {
+	newRandStream := func(done <-chan interface{}, wg *sync.WaitGroup) <-chan int {
+		randStream := make(chan int)
+		go func() {
+			defer wg.Done()
+			defer fmt.Println("newRandStream closure exited.")
+			defer close(randStream)
+			for {
+				select {
+				case randStream <- rand.Int():
+				case <-done:
+					return
+				}
+			}
+		}()
+
+		return randStream
+	}
+	var wg sync.WaitGroup
+	wg.Add(1)
+	done := make(chan interface{})
+	randStream := newRandStream(done, &wg)
+	fmt.Println("3 random ints:")
+	for i := 1; i <= 3; i++ {
+		fmt.Printf("%d: %d\n", i, <-randStream)
+	}
+	close(done)
+
+	// Simulate ongoing work
+	wg.Wait()
+}
+```
