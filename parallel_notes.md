@@ -5102,3 +5102,239 @@ func main() {
 	wg.Wait()
 }
 ```
+
+---
+
+# Module 7
+
+---
+
+## Bulk Synchronous Parallelism (BSP) pattern
+
+similar to a thread pool or barrier-type implementation.
+* A group of threads (workers) are spawned, say `t1,t2,...,tn`
+* each thread performs the same kind of computation
+* eventually, the group of threads reach a synchronization point, called a __global synchronization__
+  * there is a barrier at the global synchronization point
+
+![alt text](pics/bsp.JPG "Title")
+
+> idea: spawn a group of threads. they all perform the same kind of work. some threads may finish before others. it just happens.
+
+The phase during which the group of threads perform and finish the entire workload is called the __superstep__.
+* i.e., the group of threads perform work during the first superstep, and before they go on to the next superstep, they will wait wait at a barrier for a global snychronization.
+* the global synchronization step allows us to introduce any simple calculations that must be made based on the results of all threads' work.
+  * for example, maybe you wanted to get the sum of the results from each thread in the prior superstep before initiating a new superstep of work for the threads.
+
+---
+
+# Module 8
+
+---
+
+## MapReduce
+
+see lecture slides
+
+---
+
+## Barrier Synchronization
+
+example: simple video game
+
+* prepare frame for display by graphics coprocessor
+* "soft real-time" application
+  * need at least 35 frames/second
+  * ok to mess up rarely
+
+```java
+// want at least 35 frames / sec
+while (true) {
+  frame.prepare()
+  frame.display()
+}
+```
+
+* what about overlapping work?
+  * 1st thread displays frame
+  * 2nd prepares next frame
+
+```java
+// two phase rendering
+// thread 1
+while (true){
+  if (phase) {
+    frame[0].display();
+  } else {
+    frame[1].display();
+  }
+  phase=!phase;
+}
+// thread 2
+while (true){
+  if (phase) {
+    frame[1].prepare();
+  } else {
+    frame[0].prepare();
+  }
+  phase=!phase; // have threads switch roles
+}
+```
+
+* how do threads stay in phase?
+  * too early?: "we render no frame before its time"
+  * too late?: "recycle memory before frame is displayed"
+
+Ideal Parallel Computation
+
+* pool of threads work on the same frame and are in the same phase
+* any thread that finishes early needs to wait for other threads to finish
+
+IDEA: no thread moves to the next frame / phase until every thread finishes their work at that stage
+
+## Why barrier mechanism?
+
+* mostly of interest to scientific & numeric computation
+  * many algorithms are of the form: do this large computation, and then use the results of that computation in a later computation (or the next one); i.e., certain data needs to be fully computed. This is solved by adding a barrier.
+* elsewhere
+  * garbage collection (e.g. all threads halt to allow gc to collect unreferenced memory)
+  * less common in systems programming
+  * still important topic
+
+---
+
+## Duality
+
+* Dual to mutual exclusion
+  * include others, not exclude them
+    * e.g. there are threads working on different tasks with no dependencies; they'll be in some critical section working on tasks, but we don't want them to go onto the next ciritical section (until all members of the group have completed their section of work). we're excluding them from going on to the next phase in implementation.
+* same implementation issues
+  * interaction with caches...
+    * invalidation?
+    * local spinning?
+
+## Parallel Prefix
+
+do and store intermediate computations and store them in the original array (e.g. say we are adding all the elements in the array)
+
+![alt text](pics/pprefix1.JPG "Title")
+![alt text](pics/pprefix2.JPG "Title")
+
+* for N threads that can compute a parallel prefix of N entries
+  * there are log2N rounds
+* what if system is asynchronous?
+  * why we need barriers
+
+```java
+class Prefix extends Thread {
+  int[] a;
+  int i;
+  Barrier b;
+
+  void Prefix(int[] a, Barrier b, int i) {
+    a = a;
+    b = b;
+    i = i;
+  }
+
+  public void run() {
+    int d = 1, sum = 0;
+    while (d<N) { // for each phase I'm going to increment d by 2 potentially I might go past the bounds of the array
+      if (i >= d) // i == index thread is currently working on; once d > index value, they have no more work
+        sum = a[i-d]; // going to look at the values behind us
+      b.await() // every thread reads before any thread writes
+      if (i >= d)
+        a[i] += sum;
+      b.await() // every thread writes before any thread reads in the next phase
+      d = d*2
+    }
+  }
+}
+```
+
+---
+
+## Barrier Implementation
+
+Take into consideration
+* cache coherence
+  * spin on locally-cached locations? (spin on local variables that we define)
+  * spin on statically-defined locations? (spin on shared resource that may cause us to invalidate the caches repeatedly)
+* latency
+  * how many steps? (how many steps in order to allow for all threads to enter into next phase). primarily dependent on the amount of work that each thread will be doing up until reaching the barrier (i.e. latency = fcn (amount of work each thread doing, how balanced the work is))
+
+example protocol; slightly wrong: say there are 2 threads. thread 1 finishes early and goes to sleep. thread 2 finishes last, calls `getAndDecrement()` and prepares for phase 2 by reset `count`. Now thread 1 goes on to phase 2 while thread 2 is still waiting on phase 1. thread 1 finishes phase 2 and then goes to sleep after finishing its phase 2 work. both threads are asleep, and we have deadlock: when Thread 2 wakes up it sees the count is not 0, and thinks we're still in phase 1. Thread 2 thinks the same thing--except phase 2.
+```java
+public class Barrier {
+  AtomicInteger count; // number of threads not yet arrived at barrier
+  int size; // number of threads participating
+  public Barrier(int n){
+    count = AtomicInteger(n); // none of the threads have arrived at barrier (b/c haven't started)
+    size = n;
+  }
+
+  public void await() {
+    if (count.getAndDecrement()==1) { // if I'm last, reset fields for next time
+      count.set(size);
+    } else { // otherwise, wait for other threads
+      while (count.get() != 0);
+    }
+  }
+}
+```
+
+one solution to this problem is to always use two barriers to deal with this wrap-around issue.
+
+### Sense-Reversing Barrier Implementation
+
+```java
+public class Barrier {
+  AtomicInteger count; // number of threads not yet arrived at barrier
+  int size; // number of threads participating
+  boolean sense = false; // completed odd or even-numbered phase
+  threadSense = new ThreadLocal<boolean>... // store sense for next phase
+
+  // public Barrier(int n){
+  //   count = AtomicInteger(n); // none of the threads have arrived at barrier (b/c haven't started)
+  //   size = n;
+  // }
+
+  public void await() {
+    boolean mySense = threadSense.get();
+
+    if (count.getAndDecrement()==1) { // if I'm last, reverse the gobally shraed sense to my sense
+      count.set(size); sense = mySense
+    } else { // otherwise, wait for sense to flip
+      while (sense != mySense);
+    }
+    threadSense.set(!mySense);
+  }
+}
+```
+
+### Other Barrier Implementations (Tree Barriers / Static Tree Barriers)
+
+There are additional implementations in the book that deal with having many threads involved in the barrier. When many threads are involved, there is a storm of traffic where the many threads are trying to decrement the counter. The threads are also spinning on the global sense. 
+
+Algorithms that alleviate the memory contention are e.g. the `Tree Barrier`. You can get less memory contention by combining trees / static trees, but it is not going to improve on latency (in general)
+
+`Combining Tree Barrier`
+* no sequential bottleneck
+  * parallel `getAndDecrement()` calls
+* low memory contention
+  * same reason (parallel `getAndDecrement()` calls)
+* cache behavior
+  * local spinning on bus-based architecture
+  * not so good for NUMA
+* everyone spins on `sense` field
+  * local spinning on bus-based (good)
+  * network hot-spot on distributed architecture (bad)
+* not really scalable
+
+### Best barrier implementation for Multicore?
+* on a cache coherent multicore chip: perhaps none of the above...
+* here is another (arguably) better algorithm... `Static Tree Barrier`
+
+In general, using a barrier will impose some memory costs and introduce some amount of latency that you're not probably going to get over by using other barrier implementations.
+
+---
